@@ -1,4 +1,4 @@
-import { CheckCircle2, FileSpreadsheet, Loader2, Printer, XCircle } from "lucide-react"
+import { CheckCircle2, FileSpreadsheet, Loader2, Lock, Printer, XCircle } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   downloadReport,
+  setLock,
+  useAuth,
   getBalanceSheet,
   getCashFlow,
   getIncomeStatement,
@@ -57,6 +59,43 @@ function Section({ title, term, rows, total, compare, totalLabel }: { title: str
 function Total({ label, value, more }: { label: ComponentChildren; value: number; more?: number[] }) {
   return (
     <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td>{money(value)}{more?.map((v, i) => <td key={i} className="text-right whitespace-nowrap">{fmtIDR(v)}</td>)}</tr>
+  )
+}
+
+// CloseBooks locks every entry up to the end of a period; a correction then goes in as a
+// reversing or manual journal entry in an open period.
+function CloseBooks({ periodEnd }: { periodEnd: string }) {
+  const t = useT()
+  const { user } = useAuth()
+  const [err, setErr] = useState<FormError>({})
+  const [busy, setBusy] = useState(false)
+  const run = async (until: string | null) => {
+    setBusy(true)
+    setErr({})
+    try {
+      await setLock(until)
+    } catch (e) {
+      setErr(toFormError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const locked = user?.locked_until
+  return (
+    <section className="grid gap-2 rounded-sm border bg-card p-4 print:hidden">
+      <h2 className="flex items-center gap-2 font-semibold"><Lock className="size-4" /> {t("lock.title")}</h2>
+      <p className="text-sm text-muted-foreground">{locked ? t("lock.closedUntil", { date: fmtDate(locked) }) : t("lock.open")}</p>
+      <Status err={err} ok="" />
+      <div className="flex flex-wrap gap-2">
+        {(!locked || locked < periodEnd) && (
+          <Button variant="outline" size="sm" className="rounded-sm" disabled={busy} onClick={() => run(periodEnd)}>
+            {busy && <Loader2 className="animate-spin" />}{t("lock.close", { date: fmtDate(periodEnd) })}
+          </Button>
+        )}
+        {locked && <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(null)}>{t("lock.reopen")}</Button>}
+      </div>
+      <p className="text-xs text-muted-foreground">{t("lock.hint")}</p>
+    </section>
   )
 }
 
@@ -183,6 +222,8 @@ export function ReportsPage() {
           </TableCard>
         )}
         {view === "cf" && <p className="text-xs text-muted-foreground">{t("report.cashNote")}</p>}
+
+        {view === "pl" && pl && <CloseBooks periodEnd={pl.period.end} />}
 
         {view === "tax" && tax && (
           <>

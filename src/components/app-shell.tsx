@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, CreditCard, FileUp, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeftRight, BookOpen, ChevronRight, CreditCard, FileUp, NotebookPen, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -23,17 +23,42 @@ const nav: { href: string; label: Key; icon: typeof LayoutDashboard }[] = [
   { href: "/app/reports", label: "nav.reports", icon: FileText },
   { href: "/app/accounts", label: "nav.accounts", icon: BookOpen },
   { href: "/app/reconcile", label: "nav.reconcile", icon: ScanSearch },
-  { href: "/app/trial-balance", label: "nav.trialBalance", icon: Scale },
-  { href: "/app/opening", label: "nav.opening", icon: Flag },
   { href: "/account", label: "nav.profile", icon: UserRound },
 ]
 
+// Tools that rewrite the books rather than record everyday money: out of the main list,
+// one tap away under "Advanced".
+const advanced: typeof nav = [
+  { href: "/app/opening", label: "nav.opening", icon: Flag },
+  { href: "/app/journal", label: "nav.journal", icon: NotebookPen },
+  { href: "/app/trial-balance", label: "nav.trialBalance", icon: Scale },
+]
+
+const advancedKey = "saluyu.nav.advanced"
+
 function NavLinks({ path, inbox }: { path: string; inbox: number }) {
   const t = useT()
-  return (
-    <nav className="flex flex-col gap-1 px-3" aria-label={t("nav.console")}>
-      {nav.map(({ href, label, icon: Icon }) => {
-        const active = path === href || path.startsWith(href + "/")
+  const isActive = (href: string) => path === href || path.startsWith(href + "/")
+  const inAdvanced = advanced.some((a) => isActive(a.href))
+  // The group remembers whether you left it open, across pages and re-renders; it also
+  // opens by itself on its own pages.
+  const [open, setOpen] = useState(() => {
+    try {
+      return inAdvanced || localStorage.getItem(advancedKey) === "1"
+    } catch {
+      return inAdvanced
+    }
+  })
+  const toggle = (next: boolean) => {
+    setOpen(next)
+    try {
+      localStorage.setItem(advancedKey, next ? "1" : "0")
+    } catch {
+      /* private mode: remembered for this page only */
+    }
+  }
+  const link = ({ href, label, icon: Icon }: (typeof nav)[number]) => {
+        const active = isActive(href)
         return (
           <a
             key={href}
@@ -54,7 +79,18 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
             )}
           </a>
         )
-      })}
+  }
+  return (
+    <nav className="flex flex-col gap-1 px-3" aria-label={t("nav.console")}>
+      {nav.map(link)}
+      {/* Native disclosure: no script, keyboard and screen readers work; open on its own pages. */}
+      <details open={open} onToggle={(e) => toggle((e.currentTarget as HTMLDetailsElement).open)} className="group mt-2">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-sm px-3 text-sm text-muted-foreground hover:text-primary lg:min-h-9 [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+          {t("nav.advanced")}
+        </summary>
+        <div className="mt-1 flex flex-col gap-1">{advanced.map(link)}</div>
+      </details>
     </nav>
   )
 }

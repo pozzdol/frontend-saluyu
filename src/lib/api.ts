@@ -11,6 +11,7 @@ export type User = {
   period_start_day: number // 1..28, first day of the payday period
   email_verified: boolean // group invites show only after verifying
   totp_enabled: boolean
+  locked_until: string | null // books are closed up to and including this day
 }
 
 type Session = { access_token: string; user: User }
@@ -46,6 +47,8 @@ function setSession(s: Session | null) {
   accessToken = s?.access_token ?? null
   setUser(s?.user ?? null)
 }
+
+export const currentUserId = () => state.user?.id
 
 export function useAuth() {
   return useSyncExternalStore(
@@ -288,6 +291,7 @@ export type PostEntryInput = {
   next_period?: boolean
   fee?: number // transfers only: a bank charge paid from the same source
   fee_account_id?: string
+  client_id?: string // makes a retry safe: the server posts one entry per id
 }
 
 export const postEntry = (body: PostEntryInput) =>
@@ -809,3 +813,40 @@ export async function downloadReport(report: "income" | "balance" | "cashflow" |
   Object.assign(document.createElement("a"), { href: url, download: name }).click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+// ---- Goals, closed books, manual journal, invite links (phase 11) ----
+
+export async function setLock(locked_until: string | null) {
+  const res = await authed<{ data: User }>("/me/lock", json("PUT", { locked_until }))
+  setUser(res.data)
+}
+
+export type Goal = {
+  id: string
+  name: string
+  target: number
+  deadline: string | null
+  account_id: string
+  saved: number
+  remaining: number
+  monthly_needed: number | null
+  months_left: number | null
+}
+export type GoalInput = { name: string; target: number; deadline: string | null; account_id: string }
+export const listGoals = () => authed<{ data: Goal[] }>("/goals").then((r) => r.data)
+export const saveGoal = (body: GoalInput, id?: string) =>
+  authed<{ data: Goal }>(id ? `/goals/${id}` : "/goals", json(id ? "PUT" : "POST", body)).then((r) => r.data)
+export const deleteGoal = (id: string) => authed<void>(`/goals/${id}`, { method: "DELETE" })
+
+export const postJournal = (body: { entry_date: string; description: string; lines: LineInput[] }) =>
+  authed<{ data: Entry }>("/entries/journal", json("POST", body)).then((r) => (entriesChanged(), r.data))
+export const reverseEntry = (id: string, entry_date?: string) =>
+  authed<{ data: Entry }>(`/entries/${id}/reverse`, json("POST", entry_date ? { entry_date } : {})).then((r) => (entriesChanged(), r.data))
+
+export const createInviteLink = (groupId: string) =>
+  authed<{ data: { token: string; expires_at: string } }>(`/groups/${groupId}/invite-links`, { method: "POST" }).then((r) => r.data)
+export const acceptInviteLink = (token: string) =>
+  authed<{ data: { group_id: string } }>("/invite-links/accept", json("POST", { token })).then((r) => r.data)
+
+// whatsapp opens WhatsApp with a ready message; the person picks who gets it there.
+export const whatsapp = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`

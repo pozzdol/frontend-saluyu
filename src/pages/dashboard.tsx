@@ -11,6 +11,7 @@ import type { ComponentChildren } from "preact"
 import { DueBills } from "@/pages/cards"
 import { DueList } from "@/pages/recurring"
 import { InsightsTop, TrendsAndHealth } from "@/pages/insights"
+import { Goals } from "@/pages/goals"
 
 function Tile({ label, value, note, tone }: { label: ComponentChildren; value: string; note?: string; tone?: string }) {
   return (
@@ -125,14 +126,19 @@ export function DashboardPage() {
               </div>
               <Card className="rounded-sm">
                 <CardContent>
+                  {/* Only the categories the user chose to limit; the rest is on the Budgets page. */}
                   <ul className="grid gap-4">
-                    {d.budgets.map((r) => <BudgetBar key={r.account_id} row={r} />)}
+                    {d.budgets.filter((r) => r.budget > 0).map((r) => <BudgetBar key={r.account_id} row={r} />)}
                   </ul>
+                  {d.budgets.every((r) => r.budget === 0) && (
+                    <p className="text-sm text-muted-foreground">{t("budget.none")}</p>
+                  )}
                 </CardContent>
               </Card>
             </section>
           </>
         )}
+        <Goals />
         <TrendsAndHealth date={date} />
       </div>
     </AppShell>

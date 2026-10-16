@@ -6,8 +6,14 @@ import { Field, formValues, toFormError, type FormError } from "@/components/fie
 import { Logo } from "@/components/site"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { ApiError, forgotPassword, login, loginTOTP, register, resetPassword, useAuth, verifyEmail } from "@/lib/api"
+import { ApiError, acceptInviteLink, forgotPassword, login, loginTOTP, register, resetPassword, useAuth, verifyEmail } from "@/lib/api"
 import { useT } from "@/lib/i18n"
+
+// safeNext is ?next= when it is a path on this site (never another origin).
+export function safeNext() {
+  const next = new URLSearchParams(location.search).get("next")
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null
+}
 
 // AuthLayout is the shared frame of every signed-out page: brand panel on desktop, form on the right.
 function AuthLayout({ title, hint, err, children }: { title: string; hint?: string; err?: FormError; children: ComponentChildren }) {
@@ -115,7 +121,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   })
 
   useEffect(() => {
-    if (user) route("/app/dashboard", true)
+    if (user) route(safeNext() ?? "/app/dashboard", true)
   }, [user])
   useEffect(() => (form.setErr({}), setMfa("")), [mode])
 
@@ -254,6 +260,39 @@ export function VerifyEmailPage() {
       <Button asChild variant={state === "done" ? "default" : "outline"} className="mt-4 h-10 w-full rounded-sm">
         <a href={user ? "/app/dashboard" : "/login"}>{user ? t("auth.goToApp") : t("auth.signInTitle")}</a>
       </Button>
+    </AuthLayout>
+  )
+}
+
+// JoinPage accepts a group invite link. A signed-out visitor signs in first and comes back
+// here through ?next=, token and all.
+export function JoinPage() {
+  const t = useT()
+  const { user, ready } = useAuth()
+  const [token] = useState(() => new URLSearchParams(location.search).get("token") ?? "")
+  const [state, setState] = useState<"idle" | "busy" | "done" | FormError>("idle")
+  useEffect(() => {
+    if (!user || state !== "idle") return
+    setState("busy")
+    acceptInviteLink(token).then(() => setState("done"), (e) => setState(toFormError(e)))
+  }, [user?.id])
+  const back = encodeURIComponent(`/join?token=${token}`)
+  return (
+    <AuthLayout title={t("join.title")} err={typeof state === "object" ? state : undefined}>
+      {ready && !user && (
+        <>
+          <p className="mt-4 text-sm text-muted-foreground">{t("join.signIn")}</p>
+          <div className="mt-4 grid gap-2">
+            <Button asChild className="h-10 rounded-sm"><a href={`/login?next=${back}`}>{t("auth.signInTitle")}</a></Button>
+            <Button asChild variant="outline" className="h-10 rounded-sm"><a href={`/register?next=${back}`}>{t("auth.createAccount")}</a></Button>
+          </div>
+        </>
+      )}
+      {state === "busy" && <p className="mt-6 flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" /> {t("join.joining")}</p>}
+      {state === "done" && <Done>{t("join.joined")}</Done>}
+      {user && state !== "busy" && (
+        <Button asChild className="mt-4 h-10 w-full rounded-sm"><a href="/app/groups">{t("join.open")}</a></Button>
+      )}
     </AuthLayout>
   )
 }

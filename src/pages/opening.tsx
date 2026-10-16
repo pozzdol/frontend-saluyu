@@ -1,4 +1,5 @@
-import { Info, Loader2 } from "lucide-react"
+import { Info, Loader2, TriangleAlert } from "lucide-react"
+import { fmtDate } from "@/components/picker"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
@@ -107,15 +108,26 @@ export function OpeningPage({ user }: { user: User }) {
           </Alert>
         )}
 
-        {opening?.entry && !firstTime && (
-          <p className="text-sm text-muted-foreground">{t("open.editNote")}</p>
+        {!firstTime && (
+          <Alert className="rounded-sm border-amber-200 bg-amber-50">
+            <TriangleAlert className="text-amber-700" />
+            <AlertDescription className="grid gap-1.5 text-amber-900">
+              <p className="font-medium">{t("open.runningTitle", { date: fmtDate(user.start_date!) })}</p>
+              <p>{t("open.runningBody")}</p>
+              <p>
+                {t("open.smallFix")} <a href="/app/journal" className="font-medium underline">{t("nav.journal")}</a>.
+              </p>
+              {user.locked_until && <p className="font-medium">{t("open.lockedNote", { date: fmtDate(user.locked_until) })}</p>}
+            </AlertDescription>
+          </Alert>
         )}
         {(
           <form onSubmit={onSubmit} noValidate className="grid gap-6">
             <Status err={err} ok="" />
             <Card className="rounded-sm">
               <CardContent className="grid gap-4 sm:grid-cols-[14rem_1fr] sm:items-end">
-                <DateField name="start_date" label={t("open.booksOpen")} defaultValue={opening?.start_date ?? todayISO()} error={err.fields?.start_date} />
+                {/* key: remount once the saved date arrives; defaultValue is only read on mount */}
+                <DateField key={opening?.start_date ?? "new"} name="start_date" label={t("open.booksOpen")} defaultValue={opening?.start_date ?? todayISO()} error={err.fields?.start_date} />
                 <p className="text-sm text-muted-foreground">
                   {t("open.booksOpenHint")}
                 </p>

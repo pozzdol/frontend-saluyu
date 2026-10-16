@@ -1,4 +1,4 @@
-import { Check, Loader2, LogOut, Mail, Plus, ShieldCheck, X } from "lucide-react"
+import { Check, Copy, Link2, Loader2, LogOut, Mail, MessageCircle, Plus, ShieldCheck, X } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
 import { Field, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   approveChange,
+  createInviteLink,
+  whatsapp,
   approveLoan,
   cancelInvite,
   createGroup,
@@ -35,6 +37,7 @@ import {
 import { cn, fmtIDR } from "@/lib/utils"
 import { fmtDate, fmtPeriod } from "@/components/picker"
 import { t, useT, type Key } from "@/lib/i18n"
+import { toast } from "@/components/toast"
 
 // What a pending loan means for me, in words.
 function loanText(l: InboxLoan) {
@@ -219,6 +222,41 @@ function SummaryTable({ group, date, onPeriod }: { group: Group; date: string; o
   )
 }
 
+// InviteByLink makes a one-time join link to share by WhatsApp or copy.
+function InviteByLink({ group }: { group: Group }) {
+  const t = useT()
+  const [url, setUrl] = useState("")
+  const [err, setErr] = useState<FormError>({})
+  async function make() {
+    setErr({})
+    try {
+      const link = await createInviteLink(group.id)
+      setUrl(`${location.origin}/join?token=${link.token}`)
+    } catch (e) {
+      setErr(toFormError(e))
+    }
+  }
+  if (!url)
+    return (
+      <>
+        <Button size="sm" variant="outline" className="rounded-sm" onClick={make}><Link2 /> {t("grp.inviteLink")}</Button>
+        <Status err={err} ok="" />
+      </>
+    )
+  return (
+    <span className="flex w-full flex-wrap items-center gap-2 rounded-sm bg-[#f4f8ff] p-2 text-sm md:w-auto">
+      <a href={whatsapp(t("grp.waText", { group: group.name, url }))} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-1 rounded-sm bg-emerald-600 px-3 py-1.5 font-medium text-white hover:bg-emerald-700">
+        <MessageCircle className="size-4" /> WhatsApp
+      </a>
+      <Button size="sm" variant="ghost" onClick={() => navigator.clipboard.writeText(url).then(() => toast(t("grp.linkCopied")), () => {})}>
+        <Copy /> {t("sec.copy")}
+      </Button>
+      <span className="text-xs text-muted-foreground">{t("grp.linkHint")}</span>
+    </span>
+  )
+}
+
 function GroupCard({ group, me, date, onChange }: { group: Group; me: User; date: string; onChange: () => void }) {
   const t = useT()
   const [period, setPeriod] = useState<Period | null>(null)
@@ -247,6 +285,7 @@ function GroupCard({ group, me, date, onChange }: { group: Group; me: User; date
       <CardContent className="grid gap-5">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="mr-auto text-lg font-semibold">{group.name}</h2>
+          <InviteByLink group={group} />
           {leaving ? (
             <span className="flex gap-1">
               <Button size="sm" variant="destructive" onClick={() => run(() => leaveGroup(group.id))}>{t("grp.leaveGroup")}</Button>

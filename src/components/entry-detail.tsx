@@ -1,4 +1,4 @@
-import { Clock, Loader2, Lock, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Clock, Loader2, Lock, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useEffect, useState } from "preact/hooks"
 import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -17,6 +17,8 @@ import {
   getEntry,
   listAccounts,
   perContact,
+  reverseEntry,
+  type LineInput,
   undoDelete,
   type Account,
   type Entry,
@@ -27,7 +29,7 @@ import {
   type Snapshot,
 } from "@/lib/api"
 import { t as tr, useT, type Key } from "@/lib/i18n"
-import { cn, fmtIDR, toSen } from "@/lib/utils"
+import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { kindBadge, kinds } from "@/pages/transactions"
 
 const total = (lines: Line[]) => lines.reduce((s, l) => s + l.debit, 0)
@@ -146,10 +148,18 @@ function LoanEdit({ e, accounts, onDone }: { e: Entry; accounts: Account[]; onDo
 type Row = { key: number; account_id: string; contact_id: string | null; debit: string; credit: string }
 
 // LinesEdit is the line-by-line editor for cash counts and adjustments.
-function LinesEdit({ e, accounts, onDone }: { e: Entry; accounts: Account[]; onDone: (pending: boolean) => void }) {
+// LinesEdit edits an entry line by line. Without `save` it updates e; the manual journal
+// page passes its own `save` (and no e) to post a new entry.
+export function LinesEdit({ e, accounts, onDone, save }: {
+  e?: Entry
+  accounts: Account[]
+  onDone: (pending: boolean) => void
+  save?: (body: { entry_date: string; description: string; lines: LineInput[] }) => Promise<void>
+}) {
   const t = useT()
   const [rows, setRows] = useState<Row[]>(() =>
-    e.lines.map((l, key) => ({ key, account_id: l.account_id, contact_id: l.contact_id, debit: l.debit ? rupiah(l.debit) : "", credit: l.credit ? rupiah(l.credit) : "" })),
+    e ? e.lines.map((l, key) => ({ key, account_id: l.account_id, contact_id: l.contact_id, debit: l.debit ? rupiah(l.debit) : "", credit: l.credit ? rupiah(l.credit) : "" }))
+      : [0, 1].map((key) => ({ key, account_id: "", contact_id: null, debit: "", credit: "" })),
   )
   const options = accountOptions(accounts.filter((a) => (a.is_active && !perContact(a.code)) || rows.some((r) => r.account_id === a.id)))
   const sen = (s: string) => (s.trim() ? toSen(s) : 0)
@@ -159,19 +169,24 @@ function LinesEdit({ e, accounts, onDone }: { e: Entry; accounts: Account[]; onD
 
   const form = useForm(async (v) => {
     if (rows.some((r) => !(sen(r.debit) >= 0 && sen(r.credit) >= 0))) throw new ApiError(400, tr("field.invalid"))
-    const r = await editLines(e.id, {
+    const body = {
       entry_date: v.entry_date,
       description: v.description,
       lines: rows.map((r) => ({ account_id: r.account_id, contact_id: r.contact_id, debit: sen(r.debit), credit: sen(r.credit) })),
-    })
-    onDone(r.pending)
+    }
+    if (save) {
+      await save(body)
+      onDone(false)
+      return ""
+    }
+    onDone((await editLines(e!.id, body)).pending)
     return ""
   })
   return (
     <form onSubmit={form.onSubmit} noValidate className="grid gap-4">
       <Status err={form.err} ok="" />
-      <DateField name="entry_date" label={t("common.date")} defaultValue={e.entry_date} error={form.err.fields?.entry_date} />
-      <Field name="description" label={t("common.note")} defaultValue={e.description} error={form.err.fields?.description} />
+      <DateField name="entry_date" label={t("common.date")} defaultValue={e?.entry_date ?? todayISO()} error={form.err.fields?.entry_date} />
+      <Field name="description" label={t("common.note")} defaultValue={e?.description} error={form.err.fields?.description} />
       <fieldset className="grid gap-3">
         <legend className="mb-1 text-sm font-medium">{t("ed.lines")}</legend>
         {rows.map((r, i) => (
@@ -211,7 +226,7 @@ function SaveButton({ busy, disabled }: { busy: boolean; disabled?: boolean }) {
   )
 }
 
-function View({ d, onEdit, onDelete }: { d: EntryDetail; onEdit: () => void; onDelete: () => void }) {
+function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () => void; onDelete: () => void; onReverse: () => void }) {
   const t = useT()
   const e = d.entry
   // An approved shared loan lives in two books: deleting it would leave the other one wrong.
@@ -254,6 +269,11 @@ function View({ d, onEdit, onDelete }: { d: EntryDetail; onEdit: () => void; onD
           <p className="flex-1 self-center text-xs text-muted-foreground">{t("ed.scheduled")}</p>
         ) : (
           <Button variant="outline" className="flex-1 rounded-sm" disabled={d.change_pending} onClick={onEdit}><Pencil /> {t("common.edit")}</Button>
+        )}
+        {e.kind !== "opening" && (
+          <Button variant="ghost" className="rounded-sm" onClick={onReverse} title={t("ed.reverseHint")}>
+            <Undo2 /> {t("ed.reverse")}
+          </Button>
         )}
         {e.kind !== "opening" && (
           <Button variant="ghost" className="rounded-sm text-rose-700 hover:text-rose-800" disabled={locked} onClick={onDelete}
@@ -309,6 +329,16 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
     listAccounts().then(setAccounts).catch(() => {})
   }, [id])
 
+  async function reverse(e: Entry) {
+    try {
+      const r = await reverseEntry(e.id)
+      onClose()
+      toast(t("ed.reversed", { no: e.entry_no, new: r.entry_no }))
+    } catch (x) {
+      setErr(toFormError(x))
+    }
+  }
+
   function remove(e: Entry) {
     onClose()
     deleteSoon(e.id).catch((x) => toast(toFormError(x).message ?? "", { tone: "error" }))
@@ -322,7 +352,7 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
       <SheetContent side={mobile ? "bottom" : "right"} title={editing ? t("ed.editTitle") : t("ed.title")}>
         <Status err={err} ok="" />
         {!d && !err.message && <Loader2 className="mx-auto my-8 size-5 animate-spin text-muted-foreground" />}
-        {d && !editing && <View d={d} onEdit={() => setEditing(true)} onDelete={() => remove(d.entry)} />}
+        {d && !editing && <View d={d} onEdit={() => setEditing(true)} onDelete={() => remove(d.entry)} onReverse={() => reverse(d.entry)} />}
         {d && editing && (
           <div className="grid gap-3 pb-2">
             {d.loan_status === "approved" && !d.mirrored && <Note icon={Clock}>{t("ed.needsApproval")}</Note>}

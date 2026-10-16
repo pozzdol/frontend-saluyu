@@ -3,7 +3,7 @@ import { LocationProvider, Route, Router, useLocation } from "preact-iso"
 import { useEffect } from "preact/hooks"
 import { useAuth, type User } from "@/lib/api"
 import { Landing } from "@/pages/landing"
-import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "@/pages/auth"
+import { AuthPage, ForgotPasswordPage, JoinPage, ResetPasswordPage, VerifyEmailPage } from "@/pages/auth"
 import { Account } from "@/pages/account"
 import { Transactions } from "@/pages/transactions"
 import { Accounts } from "@/pages/accounts"
@@ -19,9 +19,13 @@ import { GroupsPage } from "@/pages/groups"
 import { WelcomePage } from "@/pages/welcome"
 import { CardPage, CardsPage, PlanPage } from "@/pages/cards"
 import { RecurringPage } from "@/pages/recurring"
+import { JournalPage } from "@/pages/journal"
 import { ImportPage } from "@/pages/import"
 import { PrivacyPage } from "@/pages/privacy"
-import { browserLocale, setLocale, useT } from "@/lib/i18n"
+import { browserLocale, setLocale, t, useT } from "@/lib/i18n"
+import { flush } from "@/lib/outbox"
+import { toast } from "@/components/toast"
+import { toFormError } from "@/components/field"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
@@ -72,6 +76,7 @@ const Groups = protect(GroupsPage)
 const Welcome = protect(WelcomePage)
 const Cards = protect(CardsPage)
 const Recurring = protect(RecurringPage)
+const Journal = protect(JournalPage)
 const Import = protect(ImportPage)
 const CardDetail = protect(({ params }: { params: { id: string } }) => <CardPage id={params.id} />)
 const PlanDetail = protect(({ params }: { params: { id: string } }) => <PlanPage id={params.id} />)
@@ -85,10 +90,28 @@ function LocaleSync() {
   return null
 }
 
+// OutboxSync sends Quick Add entries kept offline, now and whenever the connection is back.
+function OutboxSync() {
+  const { user } = useAuth()
+  useEffect(() => {
+    if (!user) return
+    const go = () =>
+      flush().then(({ sent, refused }) => {
+        if (sent) toast(t("qa.synced", { n: sent }))
+        for (const e of refused) toast(toFormError(e).message ?? "", { tone: "error" })
+      })
+    go()
+    window.addEventListener("online", go)
+    return () => window.removeEventListener("online", go)
+  }, [user?.id])
+  return null
+}
+
 export function App() {
   return (
     <LocationProvider>
       <LocaleSync />
+      <OutboxSync />
       <Router>
         <Route path="/" component={Landing} />
         <Route path="/login" component={() => <AuthPage mode="login" />} />
@@ -96,6 +119,7 @@ export function App() {
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/verify-email" component={VerifyEmailPage} />
+        <Route path="/join" component={JoinPage} />
         <Route path="/account" component={AccountPage} />
         <Route path="/app" component={() => <Redirect to="/app/dashboard" />} />
         <Route path="/app/dashboard" component={Dashboard} />
@@ -109,6 +133,7 @@ export function App() {
         <Route path="/app/welcome" component={Welcome} />
         <Route path="/app/cards" component={Cards} />
         <Route path="/app/recurring" component={Recurring} />
+        <Route path="/app/journal" component={Journal} />
         <Route path="/app/import" component={Import} />
         <Route path="/app/cards/:id" component={CardDetail} />
         <Route path="/app/installments/:id" component={PlanDetail} />

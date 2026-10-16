@@ -12,6 +12,7 @@ import { deleteEntry, isMoney, listAccounts, listCategoryRules, perContact, post
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
+import { enqueue, isOffline, useOutboxCount } from "@/lib/outbox"
 
 type Kind = PostEntryInput["kind"]
 
@@ -28,6 +29,12 @@ const pad: PadKey[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "000", "0", 
 const walletKey = "saluyu.quickadd.wallet"
 const lastWallet = () => { try { return localStorage.getItem(walletKey) ?? "" } catch { return "" } }
 const keepWallet = (id: string) => { try { localStorage.setItem(walletKey, id) } catch { /* private mode */ } }
+
+const cacheKey = "saluyu.quickadd.accounts"
+const cache = {
+  get: (): Account[] | null => { try { return JSON.parse(localStorage.getItem(cacheKey) ?? "null") } catch { return null } },
+  set: (list: Account[]) => { try { localStorage.setItem(cacheKey, JSON.stringify(list)) } catch { /* private mode */ } },
+}
 
 const dayBefore = (iso: string) => new Date(Date.parse(iso) - 864e5).toISOString().slice(0, 10)
 
@@ -47,13 +54,19 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     listCategoryRules().then(setRules, () => {})
+    const use = (list: Account[]) => {
+      setAccounts(list)
+      const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code)) // default: never a card
+      setWallet(wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
+    }
+    // Offline, the accounts from the last successful load still let you record.
     listAccounts()
-      .then((list) => {
-        setAccounts(list)
-        const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code)) // default: never a card
-        setWallet(wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
+      .then((list) => (use(list), cache.set(list)))
+      .catch((e) => {
+        const saved = cache.get()
+        if (saved) use(saved)
+        else setErr(toFormError(e))
       })
-      .catch((e) => setErr(toFormError(e)))
   }, [])
 
   // Typing on a keyboard works too, unless the note field has focus.
@@ -89,8 +102,9 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
     setBusy(true)
     setErr({})
     const [from, to] = shape[kind].walletIsFrom ? [wallet, tile] : [tile, wallet]
+    const input = { kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: note.trim(), client_id: crypto.randomUUID() }
     try {
-      const e = await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: note.trim() })
+      const e = await postEntry(input)
       keepWallet(wallet)
       onDone()
       toast(t("qa.saved", { amount: fmtIDR(amount), account: tileAccount.name }), {
@@ -100,7 +114,13 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
         },
       })
     } catch (e) {
-      setErr(toFormError(e))
+      if (isOffline(e)) {
+        // Kept on this device and sent when the connection is back (OutboxSync).
+        enqueue(input)
+        keepWallet(wallet)
+        onDone()
+        toast(t("qa.queued", { amount: fmtIDR(amount), account: tileAccount.name }))
+      } else setErr(toFormError(e))
     } finally {
       setBusy(false)
     }
@@ -195,17 +215,26 @@ export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {
   const t = useT()
   const mobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const waiting = useOutboxCount()
   return (
     <>
       {variant === "fab" ? (
         <button type="button" aria-label={t("qa.title")} onClick={() => setOpen(true)}
           className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 lg:hidden print:hidden">
           <Plus className="size-6" />
+          {waiting > 0 && (
+            <span className="absolute -top-1 -right-1 grid size-6 place-items-center rounded-full bg-amber-500 text-xs font-semibold text-white">
+              {waiting}<span className="sr-only"> {t("qa.waiting", { n: waiting })}</span>
+            </span>
+          )}
         </button>
       ) : (
-        <Button className="h-10 w-full rounded-sm" onClick={() => setOpen(true)}>
-          <Plus /> {t("qa.open")}
-        </Button>
+        <div className="grid gap-1">
+          <Button className="h-10 w-full rounded-sm" onClick={() => setOpen(true)}>
+            <Plus /> {t("qa.open")}
+          </Button>
+          {waiting > 0 && <p className="text-center text-xs text-amber-800">{t("qa.waiting", { n: waiting })}</p>}
+        </div>
       )}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side={mobile ? "bottom" : "right"} title={t("qa.title")} className={cn(mobile && "max-h-[94svh]")}>

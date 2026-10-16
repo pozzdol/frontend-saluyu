@@ -1,4 +1,4 @@
-import { ArrowLeft, HandCoins, Loader2, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, HandCoins, Loader2, MessageCircle, Plus, Trash2 } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
@@ -18,6 +18,7 @@ import {
   listAccounts,
   listGroups,
   useAuth,
+  whatsapp,
   listContacts,
   perContact,
   postLoan,
@@ -373,6 +374,12 @@ export function ContactPage({ id }: { id: string }) {
               </CardContent>
             </Card>
 
+            {c.net > 0 && (
+              <a href={whatsapp(t("ct.waText", { name: c.name, amount: fmtIDR(c.net) }))} target="_blank" rel="noopener noreferrer"
+                className="flex w-fit items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100">
+                <MessageCircle className="size-4" /> {t("ct.waRemind")}
+              </a>
+            )}
             <LinkMember contact={c} onChange={() => setReload((n) => n + 1)} />
 
             <LoanForm contact={c} accounts={accounts} onPosted={() => setReload((n) => n + 1)} />
