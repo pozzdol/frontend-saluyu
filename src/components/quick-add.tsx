@@ -8,7 +8,7 @@ import { toast } from "@/components/toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { deleteEntry, isMoney, listAccounts, perContact, postEntry, type Account, type PostEntryInput } from "@/lib/api"
+import { deleteEntry, isMoney, listAccounts, listCategoryRules, perContact, postEntry, ruleFor, type Account, type CategoryRule, type PostEntryInput } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
@@ -38,12 +38,15 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   const [digits, setDigits] = useState("")
   const [wallet, setWallet] = useState("")
   const [tile, setTile] = useState("")
+  const [tilePicked, setTilePicked] = useState(false) // a tap beats a rule's suggestion
+  const [rules, setRules] = useState<CategoryRule[]>([])
   const [date, setDate] = useState(todayISO())
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<FormError>({})
 
   useEffect(() => {
+    listCategoryRules().then(setRules, () => {})
     listAccounts()
       .then((list) => {
         setAccounts(list)
@@ -138,7 +141,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
         ) : (
           <div className="grid grid-cols-4 gap-2">
             {tiles.map((a) => (
-              <button key={a.id} type="button" aria-pressed={a.id === tile} onClick={() => setTile(a.id)}
+              <button key={a.id} type="button" aria-pressed={a.id === tile} onClick={() => (setTile(a.id), setTilePicked(true))}
                 className={cn("grid min-h-20 justify-items-center content-start gap-1.5 rounded-sm border p-2 text-center text-xs leading-tight",
                   a.id === tile ? "border-primary bg-[#eaf2ff] ring-1 ring-primary" : "hover:bg-muted")}>
                 <AccountIcon account={a} />
@@ -158,7 +161,13 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
       </div>
 
       <Input aria-label={t("common.note")} placeholder={`${t("common.note")} (${t("common.optional").toLowerCase()})`} value={note}
-        onInput={(e) => setNote(e.currentTarget.value)} className="h-11 rounded-sm md:h-10" maxLength={200} />
+        onInput={(e) => {
+          const v = e.currentTarget.value
+          setNote(v)
+          // "grab ke kantor" picks Transportasi when a rule says GRAB -> Transportasi.
+          const hit = !tilePicked && ruleFor(rules, v, amount)
+          if (hit && tiles.some((a) => a.id === hit.account_id)) setTile(hit.account_id)
+        }} className="h-11 rounded-sm md:h-10" maxLength={200} />
 
       {/* Keypad and Save stay pinned at the bottom of the sheet; the choices above scroll. */}
       <div className="sticky bottom-0 -mx-4 grid gap-2 border-t bg-background px-4 pt-3 pb-1">

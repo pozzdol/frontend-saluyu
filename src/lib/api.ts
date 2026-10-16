@@ -650,3 +650,91 @@ export const createPlan = (body: PlanInput) => authed<{ data: Plan }>("/installm
 export const payInstallment = (id: string, body: { from_account_id: string; entry_date: string }) =>
   authed<{ data: Plan }>(`/installments/${id}/pay`, json("POST", body)).then((r) => (entriesChanged(), r.data))
 export const deletePlan = (id: string) => authed<void>(`/installments/${id}`, { method: "DELETE" })
+
+// ---- Recurring, imports and category rules (phase 9) ----
+
+export type RecurringRule = {
+  id: string
+  name: string
+  kind: "income" | "expense" | "transfer"
+  from_account_id: string
+  to_account_id: string
+  amount: number
+  frequency: "daily" | "weekly" | "monthly" | "payday"
+  day: number | null
+  mode: "remind" | "auto"
+  next_date: string
+  end_date: string | null
+  last_error: string | null
+}
+export type RecurringInput = Omit<RecurringRule, "id" | "next_date" | "last_error"> & { start_date: string }
+export type DueOccurrence = { rule: RecurringRule; due_date: string }
+
+export const listRecurring = () => authed<{ data: RecurringRule[] }>("/recurring").then((r) => r.data)
+export const saveRecurring = (body: RecurringInput, id?: string) =>
+  authed<{ data: RecurringRule }>(id ? `/recurring/${id}` : "/recurring", json(id ? "PUT" : "POST", body)).then((r) => r.data)
+export const deleteRecurring = (id: string) => authed<void>(`/recurring/${id}`, { method: "DELETE" })
+export const listDue = () => authed<{ data: DueOccurrence[] }>("/recurring/due").then((r) => r.data)
+export const confirmDue = (id: string, body: { due_date: string; amount?: number }) =>
+  authed<void>(`/recurring/${id}/confirm`, json("POST", body)).then(entriesChanged)
+export const skipDue = (id: string, due_date: string) => authed<void>(`/recurring/${id}/skip`, json("POST", { due_date }))
+
+export type CategoryRule = { id: string; keyword: string; min_amount: number | null; max_amount: number | null; account_id: string }
+export const listCategoryRules = () => authed<{ data: CategoryRule[] }>("/category-rules").then((r) => r.data)
+export const createCategoryRule = (body: Omit<CategoryRule, "id">) =>
+  authed<{ data: CategoryRule }>("/category-rules", json("POST", body)).then((r) => r.data)
+export const deleteCategoryRule = (id: string) => authed<void>(`/category-rules/${id}`, { method: "DELETE" })
+// ruleFor is the first rule matching a note and amount (sen), like the server does on import.
+export const ruleFor = (rules: CategoryRule[], note: string, amount: number) =>
+  rules.find((r) => note.toLowerCase().includes(r.keyword.toLowerCase()) &&
+    (r.min_amount === null || Math.abs(amount) >= r.min_amount) && (r.max_amount === null || Math.abs(amount) <= r.max_amount))
+
+export type Mapping = {
+  header_row: number
+  date_col: number
+  description_cols: number[]
+  amount_col: number | null
+  debit_col: number | null
+  credit_col: number | null
+  balance_col: number | null
+  date_format: "dmy" | "mdy" | "ymd"
+  decimal: "comma" | "dot"
+  negate: boolean
+  headers: string[] // the layout this mapping was made for
+}
+export type ImportRow = {
+  line: number
+  date: string
+  description: string
+  amount: number
+  balance: number | null
+  hash: string
+  status: "new" | "duplicate" | "matched"
+  entry_id: string | null
+  entry_no: number | null
+  suggested_account_id: string | null
+}
+export type ImportPreview = { mapping: Mapping; headers: string[]; rows: ImportRow[]; errors: { line: number; message: string }[] }
+
+// previewImport uploads the file as multipart, so it bypasses the JSON request helper.
+export async function previewImport(accountId: string, file: File, mapping?: Mapping): Promise<ImportPreview> {
+  const go = () => {
+    const form = new FormData()
+    form.set("file", file)
+    form.set("account_id", accountId)
+    if (mapping) form.set("mapping", JSON.stringify(mapping))
+    return fetch("/api/v1/imports/preview", { method: "POST", body: form, headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
+  }
+  let res = await go()
+  if (res.status === 401 && (await refresh())) res = await go()
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.fields, body.code, body.field_codes)
+  return body.data
+}
+
+export const commitImport = (body: {
+  account_id: string
+  mapping: Mapping
+  rows: { hash: string; date: string; description: string; amount: number; account_id?: string; match_entry_id?: string }[]
+  remember?: Omit<CategoryRule, "id">[]
+}) => authed<{ data: { posted: number; matched: number; skipped: number } }>("/imports/commit", json("POST", body)).then((r) => (entriesChanged(), r.data))

@@ -9,6 +9,7 @@ import { Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import type { ComponentChildren } from "preact"
 import { DueBills } from "@/pages/cards"
+import { DueList } from "@/pages/recurring"
 
 function Tile({ label, value, note, tone }: { label: ComponentChildren; value: string; note?: string; tone?: string }) {
   return (
@@ -69,6 +70,7 @@ export function DashboardPage() {
       <div className="grid gap-6">
         <Status err={err} ok="" />
         <DueBills />
+        <DueList />
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">

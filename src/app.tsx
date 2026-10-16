@@ -18,6 +18,8 @@ import { ContactPage, ContactsPage } from "@/pages/contacts"
 import { GroupsPage } from "@/pages/groups"
 import { WelcomePage } from "@/pages/welcome"
 import { CardPage, CardsPage, PlanPage } from "@/pages/cards"
+import { RecurringPage } from "@/pages/recurring"
+import { ImportPage } from "@/pages/import"
 import { PrivacyPage } from "@/pages/privacy"
 import { browserLocale, setLocale, useT } from "@/lib/i18n"
 
@@ -69,6 +71,8 @@ const Contacts = protect(ContactsPage)
 const Groups = protect(GroupsPage)
 const Welcome = protect(WelcomePage)
 const Cards = protect(CardsPage)
+const Recurring = protect(RecurringPage)
+const Import = protect(ImportPage)
 const CardDetail = protect(({ params }: { params: { id: string } }) => <CardPage id={params.id} />)
 const PlanDetail = protect(({ params }: { params: { id: string } }) => <PlanPage id={params.id} />)
 const Privacy = protect(PrivacyPage)
@@ -104,6 +108,8 @@ export function App() {
         <Route path="/app/opening" component={Opening} />
         <Route path="/app/welcome" component={Welcome} />
         <Route path="/app/cards" component={Cards} />
+        <Route path="/app/recurring" component={Recurring} />
+        <Route path="/app/import" component={Import} />
         <Route path="/app/cards/:id" component={CardDetail} />
         <Route path="/app/installments/:id" component={PlanDetail} />
         <Route path="/app/privacy" component={Privacy} />

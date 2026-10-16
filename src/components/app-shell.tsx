@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, CreditCard, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeftRight, BookOpen, CreditCard, FileUp, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -16,6 +16,8 @@ const nav: { href: string; label: Key; icon: typeof LayoutDashboard }[] = [
   { href: "/app/transactions", label: "nav.transactions", icon: ArrowLeftRight },
   { href: "/app/budgets", label: "nav.budgets", icon: PiggyBank },
   { href: "/app/cards", label: "nav.cards", icon: CreditCard },
+  { href: "/app/recurring", label: "nav.recurring", icon: Repeat },
+  { href: "/app/import", label: "nav.import", icon: FileUp },
   { href: "/app/contacts", label: "nav.contacts", icon: Users },
   { href: "/app/groups", label: "nav.groups", icon: UsersRound },
   { href: "/app/reports", label: "nav.reports", icon: FileText },
