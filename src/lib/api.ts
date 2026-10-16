@@ -140,7 +140,15 @@ export type Account = {
 
 export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment"
 
-export type Line = { account_id: string; code: string; name: string; debit: number; credit: number }
+export type Line = {
+  account_id: string
+  code: string
+  name: string
+  debit: number
+  credit: number
+  contact_id: string | null // set only on 1101 Piutang / 2101 Utang lines
+  contact_name?: string
+}
 
 export type Entry = {
   id: string
@@ -234,7 +242,9 @@ export type Opening = { start_date: string | null; entry: Entry | null; editable
 
 export const getOpening = () => authed<{ data: Opening }>("/opening").then((r) => r.data)
 
-export async function setOpening(body: { start_date: string; items: { account_id: string; amount: number }[] }) {
+export type OpeningItem = { account_id: string; contact_id?: string; amount: number }
+
+export async function setOpening(body: { start_date: string; items: OpeningItem[] }) {
   const o = await authed<{ data: Opening }>("/opening", json("PUT", body)).then((r) => r.data)
   if (state.user) setUser({ ...state.user, start_date: o.start_date }) // unlocks the console
   return o
@@ -306,3 +316,53 @@ export const getIncomeStatement = (date: string) =>
 
 export const getBalanceSheet = (date: string) =>
   authed<{ data: BalanceSheet }>(`/reports/balance-sheet${query({ date })}`).then((r) => r.data)
+
+// ---- Contacts & loans (phase 4) ----
+
+// Receivables (1101) and payables (2101) are per person, so the simple forms never use them.
+export const perContact = (code: string) => code === "1101" || code === "2101"
+
+export type Contact = {
+  id: string
+  name: string
+  linked_user_id: string | null
+  receivable: number // they owe me
+  payable: number // I owe them
+  net: number // receivable - payable; positive = they owe me
+}
+
+export type ContactLine = {
+  entry_id: string
+  entry_no: number
+  entry_date: string
+  kind: EntryKind
+  description: string
+  account_code: string
+  debit: number
+  credit: number
+  running_net: number
+}
+
+export type ContactDetail = { contact: Contact; history: ContactLine[] }
+
+export type LoanType = "talangan" | "pinjam" | "lunas_masuk" | "lunas_keluar"
+
+export type LoanInput = {
+  type: LoanType
+  contact_id: string
+  account_id: string
+  amount: number
+  entry_date: string
+  description: string
+  my_share?: number
+  expense_account_id?: string
+  confirm_overpay?: boolean
+}
+
+export const listContacts = () => authed<{ data: Contact[] }>("/contacts").then((r) => r.data)
+export const createContact = (name: string) => authed<{ data: Contact }>("/contacts", json("POST", { name })).then((r) => r.data)
+export const renameContact = (id: string, name: string) =>
+  authed<{ data: Contact }>(`/contacts/${id}`, json("PATCH", { name })).then((r) => r.data)
+export const deleteContact = (id: string) => authed<void>(`/contacts/${id}`, { method: "DELETE" })
+export const getContact = (id: string) => authed<{ data: ContactDetail }>(`/contacts/${id}`).then((r) => r.data)
+export const postLoan = (body: LoanInput) => authed<{ data: Entry }>("/loans", json("POST", body)).then((r) => r.data)

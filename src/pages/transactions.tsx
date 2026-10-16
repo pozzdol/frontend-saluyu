@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   ApiError,
+  perContact,
   deleteEntry,
   listAccounts,
   listEntries,
@@ -40,6 +41,8 @@ export const kindBadge: Record<string, string> = {
   opening: "bg-violet-50 text-violet-700",
   cash_count: "bg-amber-50 text-amber-700",
   adjustment: "bg-slate-100 text-slate-700",
+  loan: "bg-orange-50 text-orange-700",
+  repayment: "bg-teal-50 text-teal-700",
 }
 
 const label = (a: Account) => `${a.code} · ${a.name}`
@@ -47,7 +50,8 @@ const label = (a: Account) => `${a.code} · ${a.name}`
 function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
   const [kind, setKind] = useState<FormKind>("expense")
   const rule = kinds[kind]
-  const active = accounts.filter((a) => a.is_active)
+  // 1101/2101 need a person: those go through the Contacts page instead.
+  const active = accounts.filter((a) => a.is_active && !perContact(a.code))
   const fromOptions = active.filter((a) => a.type === rule.from)
   const toOptions = active.filter((a) => a.type === rule.to)
   const [from, setFrom] = useState("")
@@ -251,8 +255,9 @@ export function Transactions({ user }: { user: User }) {
             </thead>
             <tbody>
               {data?.entries.map((e) => {
-                const dr = e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")
-                const cr = e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")
+                const who = (l: Entry["lines"][number]) => (l.contact_name ? `${l.name} (${l.contact_name})` : l.name)
+                const dr = e.lines.filter((l) => l.debit > 0).map(who).join(", ")
+                const cr = e.lines.filter((l) => l.credit > 0).map(who).join(", ")
                 return (
                   <tr key={e.id}>
                     <td className="text-muted-foreground tabular-nums">{e.entry_no}</td>
