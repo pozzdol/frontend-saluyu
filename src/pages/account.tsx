@@ -1,6 +1,6 @@
 import { KeyRound, Loader2, LogOut, UserRound } from "lucide-react"
 import { useState } from "preact/hooks"
-import { Field, Status, useForm } from "@/components/field"
+import { Field, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Label } from "@/components/ui/label"
 import { AppShell } from "@/components/app-shell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { changePassword, logout, updateProfile, type User } from "@/lib/api"
-import { DayOfMonthPicker } from "@/components/picker"
+import { DayOfMonthPicker, SelectPicker } from "@/components/picker"
+import { useT } from "@/lib/i18n"
 
 const initials = (name: string) =>
   name
@@ -20,10 +21,11 @@ const initials = (name: string) =>
 
 // PaydayField picks the day each budget period starts; the hidden input feeds the profile form.
 function PaydayField({ day, error }: { day: number; error?: string }) {
+  const t = useT()
   const [value, setValue] = useState(day)
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor="period_start_day">Payday (period start day)</Label>
+      <Label htmlFor="period_start_day">{t("prof.payday")}</Label>
       <DayOfMonthPicker id="period_start_day" value={value} onChange={setValue} />
       <input type="hidden" name="period_start_day" value={String(value)} />
       {error && <p className="text-xs text-destructive">{error[0].toUpperCase() + error.slice(1)}</p>}
@@ -31,28 +33,53 @@ function PaydayField({ day, error }: { day: number; error?: string }) {
   )
 }
 
+// LanguageField saves on change: the whole page switches language at once.
+function LanguageField({ user }: { user: User }) {
+  const t = useT()
+  const [err, setErr] = useState<FormError>({})
+  return (
+    <div className="grid gap-1.5">
+      <Label>{t("prof.language")}</Label>
+      <SelectPicker
+        aria-label={t("prof.language")}
+        title={t("prof.language")}
+        value={user.locale ?? "auto"}
+        onChange={(v) => updateProfile({ locale: v as "id" | "en" | "auto" }).then(() => setErr({}), (e) => setErr(toFormError(e)))}
+        options={[
+          { value: "auto", label: t("prof.auto") },
+          { value: "id", label: "Bahasa Indonesia" },
+          { value: "en", label: "English" },
+        ]}
+      />
+      <p className="text-xs text-muted-foreground">{t("prof.languageHint")}</p>
+      <Status err={err} ok="" />
+    </div>
+  )
+}
+
 export function Account({ user }: { user: User }) {
+  const t = useT()
   const profile = useForm(async (v) => {
     // Send only changed fields: the API treats a missing field as "leave as is".
     const body: { name?: string; img_url?: string; period_start_day?: number } = {}
     if (v.name !== user.name) body.name = v.name
     if (v.img_url !== user.img_url) body.img_url = v.img_url
     if (Number(v.period_start_day) !== user.period_start_day) body.period_start_day = Number(v.period_start_day)
-    if (Object.keys(body).length === 0) return "Nothing to update."
+    if (Object.keys(body).length === 0) return t("common.nothingToUpdate")
     await updateProfile(body)
-    return "Profile saved."
+    return t("prof.saved")
   })
 
   const password = useForm(async (v, form) => {
     await changePassword({ old_password: v.old_password, new_password: v.new_password })
     form.reset()
-    return "Password changed. Every other device has been signed out."
+    return t("prof.pwChanged")
   })
 
   const [leaving, setLeaving] = useState(false)
 
   return (
-    <AppShell title="Profile">
+    <AppShell title={t("prof.title")}>
       <section className="mb-6 rounded-sm border bg-card">
         <div className="flex flex-wrap items-center gap-4 p-4 md:gap-5 md:p-6">
           <Avatar className="size-16 rounded-sm ring-4 ring-white">
@@ -64,7 +91,7 @@ export function Account({ user }: { user: User }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-xl font-semibold tracking-tight">{user.name}</h2>
-              <Badge className="rounded-sm bg-emerald-100 text-emerald-700">{user.is_active ? "Active" : "Inactive"}</Badge>
+              <Badge className="rounded-sm bg-emerald-100 text-emerald-700">{user.is_active ? t("common.active") : t("common.inactive")}</Badge>
             </div>
             <p className="truncate text-sm text-muted-foreground">{user.email}</p>
           </div>
@@ -78,7 +105,7 @@ export function Account({ user }: { user: User }) {
             }}
           >
             {leaving ? <Loader2 className="animate-spin" /> : <LogOut />}
-            Sign out
+            {t("prof.signOut")}
           </Button>
         </div>
       </section>
@@ -87,17 +114,17 @@ export function Account({ user }: { user: User }) {
         <Card className="rounded-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <UserRound className="size-4 text-primary" /> Profile
+              <UserRound className="size-4 text-primary" /> {t("prof.title")}
             </CardTitle>
-            <CardDescription>Your name and avatar as shown in the console.</CardDescription>
+            <CardDescription>{t("prof.profileHint")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={profile.onSubmit} className="grid gap-4" noValidate>
               <Status {...profile} />
-              <Field name="name" label="Full name" defaultValue={user.name} error={profile.err.fields?.name} />
+              <Field name="name" label={t("auth.fullName")} defaultValue={user.name} error={profile.err.fields?.name} />
               <Field
                 name="img_url"
-                label="Avatar URL"
+                label={t("prof.avatar")}
                 type="url"
                 placeholder="https://…"
                 defaultValue={user.img_url}
@@ -105,45 +132,46 @@ export function Account({ user }: { user: User }) {
               />
               <PaydayField day={user.period_start_day} error={profile.err.fields?.period_start_day} />
               <p className="-mt-2 text-xs text-muted-foreground">
-                Day 1 to 28 when your month starts. Changing this re-slices past periods too.
+                {t("prof.paydayHint")}
               </p>
-              <Field name="email" label="Email (cannot be changed)" defaultValue={user.email} type="email" disabled />
+              <Field name="email" label={t("prof.emailFixed")} defaultValue={user.email} type="email" disabled />
               <Button type="submit" disabled={profile.busy} className="h-10 rounded-sm">
                 {profile.busy && <Loader2 className="animate-spin" />}
-                Save profile
+                {t("prof.save")}
               </Button>
             </form>
+            <div className="mt-6 border-t pt-6"><LanguageField user={user} /></div>
           </CardContent>
         </Card>
 
         <Card className="rounded-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <KeyRound className="size-4 text-primary" /> Security
+              <KeyRound className="size-4 text-primary" /> {t("prof.security")}
             </CardTitle>
-            <CardDescription>Changing your password signs out every other device.</CardDescription>
+            <CardDescription>{t("prof.securityHint")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={password.onSubmit} className="grid gap-4" noValidate>
               <Status {...password} />
               <Field
                 name="old_password"
-                label="Current password"
+                label={t("prof.currentPw")}
                 type="password"
                 autoComplete="current-password"
                 error={password.err.fields?.old_password}
               />
               <Field
                 name="new_password"
-                label="New password"
+                label={t("prof.newPw")}
                 type="password"
                 autoComplete="new-password"
-                placeholder="At least 6 characters"
+                placeholder={t("auth.passwordHint")}
                 error={password.err.fields?.new_password}
               />
               <Button type="submit" disabled={password.busy} className="h-10 rounded-sm">
                 {password.busy && <Loader2 className="animate-spin" />}
-                Change password
+                {t("prof.changePw")}
               </Button>
             </form>
           </CardContent>

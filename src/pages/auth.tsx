@@ -6,8 +6,10 @@ import { Logo } from "@/components/site"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { login, register, useAuth } from "@/lib/api"
+import { useT } from "@/lib/i18n"
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
+  const t = useT()
   const isLogin = mode === "login"
   const { user } = useAuth()
   const { route } = useLocation()
@@ -40,16 +42,12 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           <Logo />
         </div>
         <div className="mt-auto max-w-md">
-          <h2 className="text-3xl font-bold tracking-tight">One ledger, every account in balance.</h2>
+          <h2 className="text-3xl font-bold tracking-tight">{t("brand.tagline")}</h2>
           <ul className="mt-6 space-y-3 text-sm text-white/85">
-            {[
-              "Short-lived access tokens kept in memory only",
-              "Refresh sessions in HttpOnly, SameSite=Strict cookies",
-              "Changing your password signs out every other device",
-            ].map((t) => (
-              <li key={t} className="flex gap-2">
+            {([t("auth.perk1"), t("auth.perk2"), t("auth.perk3")]).map((perk) => (
+              <li key={perk} className="flex gap-2">
                 <Check className="mt-0.5 size-4 shrink-0" />
-                {t}
+                {perk}
               </li>
             ))}
           </ul>
@@ -63,9 +61,9 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           <Logo />
         </div>
         <div className="m-auto w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-tight">{isLogin ? "Sign in" : "Create your workspace"}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{isLogin ? t("auth.signInTitle") : t("auth.registerTitle")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {isLogin ? "Welcome back. Enter your email and password." : "Free for 3 months. No card required."}
+            {isLogin ? t("auth.signInHint") : t("auth.registerHint")}
           </p>
 
           {err.message && (
@@ -76,27 +74,27 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           )}
 
           <form onSubmit={onSubmit} className="mt-6 grid gap-4" noValidate>
-            {!isLogin && <Field name="name" label="Full name" autoComplete="name" error={err.fields?.name} required />}
-            <Field name="email" label="Email" type="email" autoComplete="email" error={err.fields?.email} required />
+            {!isLogin && <Field name="name" label={t("auth.fullName")} autoComplete="name" error={err.fields?.name} required />}
+            <Field name="email" label={t("auth.email")} type="email" autoComplete="email" error={err.fields?.email} required />
             <Field
               name="password"
-              label="Password"
+              label={t("auth.password")}
               type="password"
               autoComplete={isLogin ? "current-password" : "new-password"}
-              placeholder={isLogin ? undefined : "At least 6 characters"}
+              placeholder={isLogin ? undefined : t("auth.passwordHint")}
               error={err.fields?.password}
               required
             />
             <Button type="submit" disabled={busy} className="mt-2 h-10 rounded-sm">
               {busy && <Loader2 className="animate-spin" />}
-              {isLogin ? "Sign in" : "Create account"}
+              {isLogin ? t("auth.signInTitle") : t("auth.createAccount")}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            {isLogin ? "New to Saluyu? " : "Already have an account? "}
+            {isLogin ? t("auth.newHere") : t("auth.haveAccount")}
             <a href={isLogin ? "/register" : "/login"} className="font-medium text-primary hover:underline">
-              {isLogin ? "Create an account" : "Sign in"}
+              {isLogin ? t("auth.createLink") : t("auth.signInTitle")}
             </a>
           </p>
         </div>

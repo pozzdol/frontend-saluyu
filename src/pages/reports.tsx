@@ -9,32 +9,36 @@ import { fmtIDR } from "@/lib/utils"
 import { useLocation } from "preact-iso"
 import { DatePicker, fmtDate } from "@/components/picker"
 import { Segmented } from "@/components/segmented"
+import type { ComponentChildren } from "preact"
+import { Term, type TermKey } from "@/components/term"
+import { t, useT } from "@/lib/i18n"
 
-const views = { pl: "Income statement", bs: "Balance sheet" } as const
+const views = { pl: "report.pl", bs: "report.bs" } as const
 
 // Section: a heading row, its accounts, then a total row.
-function Section({ title, rows, total }: { title: string; rows: AmountRow[]; total: number }) {
+function Section({ title, term, rows, total }: { title: string; term: TermKey; rows: AmountRow[]; total: number }) {
   return (
     <>
-      <tr className="bg-[#f7f8fa] font-medium"><td colSpan={2}>{title}</td></tr>
+      <tr className="bg-[#f7f8fa] font-medium"><td colSpan={2}><Term k={term}>{title}</Term></td></tr>
       {rows.map((r) => (
         <tr key={r.account_id}>
           <td className="pl-8!">{r.code} · {r.name}</td>
           <td className="text-right whitespace-nowrap">{fmtIDR(r.amount)}</td>
         </tr>
       ))}
-      <tr className="font-semibold"><td>Total {title.toLowerCase()}</td><td className="text-right whitespace-nowrap">{fmtIDR(total)}</td></tr>
+      <tr className="font-semibold"><td>{t("report.totalOf", { name: title.toLowerCase() })}</td><td className="text-right whitespace-nowrap">{fmtIDR(total)}</td></tr>
     </>
   )
 }
 
-function Total({ label, value }: { label: string; value: number }) {
+function Total({ label, value }: { label: ComponentChildren; value: number }) {
   return (
     <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td><td className="text-right whitespace-nowrap">{fmtIDR(value)}</td></tr>
   )
 }
 
 export function ReportsPage() {
+  const t = useT()
   const { query, route, path } = useLocation()
   const view = query.view === "bs" ? "bs" : "pl"
   const [date, setDate] = usePeriodDate()
@@ -52,17 +56,17 @@ export function ReportsPage() {
 
   return (
     <AppShell
-      title="Reports"
+      title={t("report.title")}
       actions={
         view === "pl" ? (
           <PeriodPicker period={pl?.period} onChange={setDate} />
         ) : (
           // Same height as PeriodPicker so the header does not jump between tabs.
           <DatePicker
-            aria-label="Balance sheet as of"
-            title="As of"
+            aria-label={t("report.asOfLabel")}
+            title={t("report.asOfLabel")}
             value={bs?.as_of ?? date}
-            display={`As of ${fmtDate(bs?.as_of ?? date)}`}
+            display={t("picker.asOf", { date: fmtDate(bs?.as_of ?? date) })}
             onChange={(d) => d && setDate(d)}
             className="w-full justify-center bg-white font-medium md:h-9 md:w-64"
           />
@@ -71,19 +75,19 @@ export function ReportsPage() {
     >
       <div className="grid gap-4">
         <Segmented
-          label="Report"
+          label={t("report.tabs")}
           value={view}
           onChange={(k) => route(`${path}?${new URLSearchParams({ ...query, view: k })}`, true)}
-          items={(Object.keys(views) as (keyof typeof views)[]).map((k) => ({ value: k, label: views[k] }))}
+          items={(Object.keys(views) as (keyof typeof views)[]).map((k) => ({ value: k, label: <Term k={k === "pl" ? "incomeStatement" : "balanceSheet"}>{t(views[k])}</Term> }))}
         />
         <Status err={err} ok="" />
 
         {view === "pl" && pl && (
           <TableCard>
             <tbody className="tabular-nums">
-              <Section title="Revenue" rows={pl.revenue} total={pl.revenue_total} />
-              <Section title="Expense" rows={pl.expense} total={pl.expense_total} />
-              <Total label="Net income" value={pl.net_income} />
+              <Section title={t("report.revenue")} term="revenue" rows={pl.revenue} total={pl.revenue_total} />
+              <Section title={t("report.expense")} term="expense" rows={pl.expense} total={pl.expense_total} />
+              <Total label={<Term k="surplus">{t("report.netIncome")}</Term>} value={pl.net_income} />
             </tbody>
           </TableCard>
         )}
@@ -91,19 +95,19 @@ export function ReportsPage() {
         {view === "bs" && bs && (
           <>
             {bs.balanced ? (
-              <Badge className="w-fit rounded-sm bg-emerald-50 px-2.5 py-1 text-emerald-700"><CheckCircle2 /> Balanced</Badge>
+              <Badge className="w-fit rounded-sm bg-emerald-50 px-2.5 py-1 text-emerald-700"><CheckCircle2 /> {t("report.balanced")}</Badge>
             ) : (
               <Badge className="w-fit rounded-sm bg-rose-50 px-2.5 py-1 text-rose-700">
-                <XCircle /> Not balanced: off by {fmtIDR(Math.abs(bs.assets_total - bs.liabilities_total - bs.equity_total - bs.current_earnings))}
+                <XCircle /> {t("report.notBalanced", { amount: fmtIDR(Math.abs(bs.assets_total - bs.liabilities_total - bs.equity_total - bs.current_earnings)) })}
               </Badge>
             )}
             <TableCard>
               <tbody className="tabular-nums">
-                <Section title="Assets" rows={bs.assets} total={bs.assets_total} />
-                <Section title="Liabilities" rows={bs.liabilities} total={bs.liabilities_total} />
-                <Section title="Equity" rows={bs.equity} total={bs.equity_total} />
-                <tr><td className="pl-8!">Current earnings</td><td className="text-right whitespace-nowrap">{fmtIDR(bs.current_earnings)}</td></tr>
-                <Total label="Liabilities + equity + current earnings" value={bs.liabilities_total + bs.equity_total + bs.current_earnings} />
+                <Section title={t("report.assets")} term="asset" rows={bs.assets} total={bs.assets_total} />
+                <Section title={t("report.liabilities")} term="liability" rows={bs.liabilities} total={bs.liabilities_total} />
+                <Section title={t("report.equity")} term="equity" rows={bs.equity} total={bs.equity_total} />
+                <tr><td className="pl-8!"><Term k="currentEarnings">{t("report.currentEarnings")}</Term></td><td className="text-right whitespace-nowrap">{fmtIDR(bs.current_earnings)}</td></tr>
+                <Total label={t("report.check")} value={bs.liabilities_total + bs.equity_total + bs.current_earnings} />
               </tbody>
             </TableCard>
           </>

@@ -7,6 +7,7 @@ export type User = {
   img_url: string
   is_active: boolean
   start_date: string | null // null until the opening balance is set
+  locale: "id" | "en" | null // null = follow the browser
   period_start_day: number // 1..28, first day of the payday period
 }
 
@@ -14,12 +15,16 @@ type Session = { access_token: string; user: User }
 
 export class ApiError extends Error {
   status: number
-  fields?: Record<string, string>
+  code?: string // stable error code the UI translates, e.g. "email_taken"
+  fields?: Record<string, string> // English text per field (fallback)
+  fieldCodes?: Record<string, string> // e.g. {"name": "min_len:3"}
 
-  constructor(status: number, message: string, fields?: Record<string, string>) {
+  constructor(status: number, message: string, fields?: Record<string, string>, code?: string, fieldCodes?: Record<string, string>) {
     super(message)
     this.status = status
     this.fields = fields
+    this.code = code
+    this.fieldCodes = fieldCodes
   }
 }
 
@@ -61,7 +66,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (res.status === 204) return undefined as T
 
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.fields)
+  if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.fields, body.code, body.field_codes)
   return body as T
 }
 
@@ -113,7 +118,7 @@ export async function logout() {
   }
 }
 
-export async function updateProfile(body: { name?: string; img_url?: string; period_start_day?: number }) {
+export async function updateProfile(body: { name?: string; img_url?: string; period_start_day?: number; locale?: "id" | "en" | "auto" }) {
   const res = await authed<{ data: User }>("/me", json("PATCH", body))
   setUser(res.data)
 }
@@ -136,6 +141,9 @@ export type Account = {
   category: string
   normal_balance: "Debit" | "Credit"
   is_active: boolean
+  icon: string // "" = default for the type
+  color: string
+  uses_30d: number // entries in the last 30 days; Quick Add sorts categories by it
 }
 
 export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment"
@@ -207,7 +215,7 @@ export const listAccounts = () => authed<{ data: Account[] }>("/accounts").then(
 export const createAccount = (body: { code: string; name: string; type: AccountType; category: string }) =>
   authed<{ data: Account }>("/accounts", json("POST", body)).then((r) => r.data)
 
-export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean }) =>
+export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean; icon?: string; color?: string }) =>
   authed<{ data: Account }>(`/accounts/${id}`, json("PATCH", body)).then((r) => r.data)
 
 export type PostEntryInput = {
@@ -221,14 +229,70 @@ export type PostEntryInput = {
 }
 
 export const postEntry = (body: PostEntryInput) =>
-  authed<{ data: Entry }>("/entries", json("POST", body)).then((r) => r.data)
+  authed<{ data: Entry }>("/entries", json("POST", body)).then((r) => (entriesChanged(), r.data))
 
 export type EntryQuery = { from?: string; to?: string; kind?: string; account_id?: string; q?: string; page?: number; limit?: number }
 
 export const listEntries = (params: EntryQuery) =>
   authed<{ data: Entry[]; total: number; page: number; limit: number }>(`/entries${query(params)}`)
 
-export const deleteEntry = (id: string) => authed<void>(`/entries/${id}`, { method: "DELETE" })
+export const deleteEntry = (id: string, keepalive = false) =>
+  authed<void>(`/entries/${id}`, { method: "DELETE", keepalive }).then(entriesChanged)
+
+// deleteSoon hides an entry now and deletes it after 8 seconds, so the toast can undo it.
+// Leaving the page sends every waiting delete at once (keepalive survives the unload).
+const doomed = new Map<string, number>()
+let hiddenEntries: ReadonlySet<string> = new Set()
+const hiddenListeners = new Set<() => void>()
+const setHidden = () => ((hiddenEntries = new Set(doomed.keys())), hiddenListeners.forEach((l) => l()))
+export const useHiddenEntries = () =>
+  useSyncExternalStore((l) => (hiddenListeners.add(l), () => void hiddenListeners.delete(l)), () => hiddenEntries)
+
+export function deleteSoon(id: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    doomed.set(id, window.setTimeout(() => {
+      doomed.delete(id)
+      deleteEntry(id).then(resolve, reject).finally(setHidden)
+    }, 8000))
+    setHidden()
+  })
+}
+export function undoDelete(id: string) {
+  window.clearTimeout(doomed.get(id))
+  doomed.delete(id)
+  setHidden()
+}
+window.addEventListener("pagehide", () => {
+  for (const [id, timer] of doomed) (window.clearTimeout(timer), void deleteEntry(id, true).catch(() => {}))
+  doomed.clear()
+})
+
+export type Revision = { changed_at: string; changed_by: string; before: Snapshot; after: Snapshot }
+export type Snapshot = { entry_date: string; period_date: string | null; description: string; lines: Line[] }
+export type EntryDetail = {
+  entry: Entry
+  revisions: Revision[] | null
+  loan_status: "" | "pending" | "approved" | "rejected"
+  mirrored: boolean
+  change_pending: boolean
+}
+export const getEntry = (id: string) => authed<{ data: EntryDetail }>(`/entries/${id}`).then((r) => r.data)
+
+// An edit answers 202 when another member must approve it first.
+type Edited = { data: Entry; status?: "pending_approval" }
+const edited = (r: Edited) => (entriesChanged(), { entry: r.data, pending: r.status === "pending_approval" })
+export const editEntry = (id: string, body: PostEntryInput) => authed<Edited>(`/entries/${id}`, json("PUT", body)).then(edited)
+export const editLoan = (id: string, body: LoanInput) => authed<Edited>(`/loans/${id}`, json("PUT", body)).then(edited)
+export type LineInput = { account_id: string; contact_id: string | null; debit: number; credit: number }
+export const editLines = (id: string, body: { entry_date: string; description: string; lines: LineInput[] }) =>
+  authed<Edited>(`/entries/${id}/lines`, json("PUT", body)).then(edited)
+
+// entriesVersion bumps after every post or delete, so a page open behind Quick Add reloads.
+let entriesVersion = 0
+const entriesListeners = new Set<() => void>()
+export const entriesChanged = () => (entriesVersion++, entriesListeners.forEach((l) => l()))
+export const useEntriesVersion = () =>
+  useSyncExternalStore((l) => (entriesListeners.add(l), () => void entriesListeners.delete(l)), () => entriesVersion)
 
 export const getLedger = (id: string, params: { from?: string; to?: string }) =>
   authed<{ data: Ledger }>(`/accounts/${id}/ledger${query(params)}`).then((r) => r.data)
@@ -390,7 +454,17 @@ export type MemberSummary = {
 export type InboxInvite = { id: string; group_id: string; group_name: string; invited_by_name: string; created_at: string }
 // delta: change in what I owe the sender; positive = I owe more, negative = they owe me more.
 export type InboxLoan = { id: string; from_name: string; kind: EntryKind; amount: number; delta: number; entry_date: string; created_at: string }
-export type Inbox = { invites: InboxInvite[]; loans: InboxLoan[] }
+export type InboxChange = {
+  id: string
+  from_name: string
+  before: { amount: number; entry_date: string }
+  after: { amount: number; entry_date: string }
+  created_at: string
+}
+export type Inbox = { invites: InboxInvite[]; loans: InboxLoan[]; changes: InboxChange[] }
+export const approveChange = (id: string) =>
+  authed<void>(`/loan-change-requests/${id}/approve`, { method: "POST" }).then(entriesChanged)
+export const rejectChange = (id: string) => authed<void>(`/loan-change-requests/${id}/reject`, { method: "POST" })
 
 export const listGroups = () => authed<{ data: Group[] }>("/groups").then((r) => r.data)
 export const createGroup = (name: string) => authed<{ data: Group }>("/groups", json("POST", { name })).then((r) => r.data)
@@ -420,7 +494,7 @@ export function refreshInbox() {
   if (!accessToken || document.hidden) return
   getInbox()
     .then((i) => {
-      inboxCount = i.invites.length + i.loans.length
+      inboxCount = i.invites.length + i.loans.length + (i.changes?.length ?? 0)
       inboxListeners.forEach((l) => l())
     })
     .catch(() => {})

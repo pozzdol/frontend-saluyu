@@ -3,10 +3,13 @@ import { AppShell, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
 import { Card, CardContent } from "@/components/ui/card"
-import { getDashboard, type BudgetRow, type Dashboard } from "@/lib/api"
+import { getDashboard, useEntriesVersion, type BudgetRow, type Dashboard } from "@/lib/api"
 import { cn, fmtIDR } from "@/lib/utils"
+import { Term } from "@/components/term"
+import { useT } from "@/lib/i18n"
+import type { ComponentChildren } from "preact"
 
-function Tile({ label, value, note, tone }: { label: string; value: string; note?: string; tone?: string }) {
+function Tile({ label, value, note, tone }: { label: ComponentChildren; value: string; note?: string; tone?: string }) {
   return (
     <Card className="rounded-sm bg-gradient-to-b from-[#eaf2ff]/70 to-white">
       <CardContent>
@@ -20,23 +23,24 @@ function Tile({ label, value, note, tone }: { label: string; value: string; note
 
 // BudgetBar: width is capped at 100%; the text says how far over, so colour is not the only signal.
 export function BudgetBar({ row }: { row: BudgetRow }) {
+  const t = useT()
   const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0
   return (
     <li className="grid gap-1">
       <div className="flex flex-wrap justify-between gap-x-3 text-sm">
         <span>{row.name}</span>
         <span className="tabular-nums text-muted-foreground">
-          {row.budget > 0 ? `${fmtIDR(row.actual)} of ${fmtIDR(row.budget)}` : `${fmtIDR(row.actual)} spent · no budget`}
+          {row.budget > 0 ? t("dash.ofBudget", { actual: fmtIDR(row.actual), budget: fmtIDR(row.budget) }) : t("dash.spentNoBudget", { actual: fmtIDR(row.actual) })}
           {row.budget > 0 && (
             <span className={cn("ml-2 font-medium", row.over ? "text-rose-700" : "text-emerald-700")}>
-              {row.over ? `Over by ${fmtIDR(-row.remaining)}` : `${fmtIDR(row.remaining)} left`}
+              {row.over ? t("dash.overBy", { amount: fmtIDR(-row.remaining) }) : t("dash.left", { amount: fmtIDR(row.remaining) })}
             </span>
           )}
         </span>
       </div>
       <div
         role="meter"
-        aria-label={`${row.name} budget used`}
+        aria-label={t("dash.budgetUsed", { name: row.name })}
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -49,30 +53,32 @@ export function BudgetBar({ row }: { row: BudgetRow }) {
 }
 
 export function DashboardPage() {
+  const t = useT()
   const [date, setDate] = usePeriodDate()
   const [d, setD] = useState<Dashboard | null>(null)
   const [err, setErr] = useState<FormError>({})
+  const version = useEntriesVersion()
 
   useEffect(() => {
     getDashboard(date).then((r) => (setErr({}), setD(r))).catch((e) => setErr(toFormError(e)))
-  }, [date])
+  }, [date, version])
 
   return (
-    <AppShell title="Dashboard" actions={<PeriodPicker period={d?.period} onChange={setDate} />}>
+    <AppShell title={t("dash.title")} actions={<PeriodPicker period={d?.period} onChange={setDate} />}>
       <div className="grid gap-6">
         <Status err={err} ok="" />
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
-              <Tile label="Income" value={fmtIDR(d.income)} tone="text-emerald-700" />
-              <Tile label="Expense" value={fmtIDR(d.expense)} tone="text-rose-700" />
-              <Tile label="Surplus" value={fmtIDR(d.surplus)} tone={d.surplus < 0 ? "text-rose-700" : undefined} note={d.surplus < 0 ? "Deficit this period" : undefined} />
-              <Tile label="Savings rate" value={`${(d.savings_rate * 100).toFixed(1)}%`} note={`${fmtIDR(d.to_savings_total)} moved to savings`} />
+              <Tile label={<Term k="revenue">{t("dash.income")}</Term>} value={fmtIDR(d.income)} tone="text-emerald-700" />
+              <Tile label={<Term k="expense">{t("dash.expense")}</Term>} value={fmtIDR(d.expense)} tone="text-rose-700" />
+              <Tile label={<Term k="surplus">{t("dash.surplus")}</Term>} value={fmtIDR(d.surplus)} tone={d.surplus < 0 ? "text-rose-700" : undefined} note={d.surplus < 0 ? t("dash.deficit") : undefined} />
+              <Tile label={<Term k="savingsRate">{t("dash.savingsRate")}</Term>} value={`${(d.savings_rate * 100).toFixed(1)}%`} note={t("dash.movedToSavings", { amount: fmtIDR(d.to_savings_total) })} />
             </div>
 
             <div className="grid items-start gap-6 lg:grid-cols-2">
               <section aria-labelledby="sav-title" className="grid content-start gap-3">
-                <h2 id="sav-title" className="text-lg font-semibold">To savings</h2>
+                <h2 id="sav-title" className="text-lg font-semibold">{t("dash.toSavings")}</h2>
                 <TableCard>
                   <tbody className="tabular-nums">
                     {d.to_savings.map((r) => (
@@ -82,14 +88,14 @@ export function DashboardPage() {
                       </tr>
                     ))}
                     {d.to_savings.length === 0 && (
-                      <tr><td className="py-8! text-center text-muted-foreground">No transfers to savings this period.</td></tr>
+                      <tr><td className="py-8! text-center text-muted-foreground">{t("dash.noSavings")}</td></tr>
                     )}
                   </tbody>
                 </TableCard>
               </section>
 
               <section aria-labelledby="bal-title" className="grid content-start gap-3">
-                <h2 id="bal-title" className="text-lg font-semibold">Asset balances</h2>
+                <h2 id="bal-title" className="text-lg font-semibold"><Term k="asset">{t("dash.assetBalances")}</Term></h2>
                 <TableCard>
                   <tbody className="tabular-nums">
                     {/* Zero balances are noise here; Trial balance lists every account. */}
@@ -106,8 +112,8 @@ export function DashboardPage() {
 
             <section aria-labelledby="bud-title" className="grid gap-3">
               <div className="flex items-end justify-between">
-                <h2 id="bud-title" className="text-lg font-semibold">Budgets</h2>
-                <a href={`/app/budgets?date=${date}`} className="text-sm text-primary hover:underline">Set budgets ›</a>
+                <h2 id="bud-title" className="text-lg font-semibold"><Term k="budget">{t("dash.budgets")}</Term></h2>
+                <a href={`/app/budgets?date=${date}`} className="text-sm text-primary hover:underline">{t("dash.setBudgets")}</a>
               </div>
               <Card className="rounded-sm">
                 <CardContent>

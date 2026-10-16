@@ -2,6 +2,7 @@ import { Scale, X } from "lucide-react"
 import { useState } from "preact/hooks"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/api"
+import { useT, type Key } from "@/lib/i18n"
 
 export function Logo() {
   return (
@@ -15,18 +16,19 @@ export function Logo() {
 }
 
 export function PromoBar() {
+  const t = useT()
   const [open, setOpen] = useState(true)
   if (!open) return null
   return (
     <div className="relative bg-gradient-to-r from-[#dbe8ff] via-[#eef4ff] to-[#dbe8ff] px-10 py-2 text-center text-xs text-foreground sm:text-sm">
-      <span className="font-medium">Ledger API 1.0 is live.</span>{" "}
-      <span className="text-muted-foreground">New workspaces get 3 months free.</span>{" "}
+      <span className="font-medium">{t("site.promoLive")}</span>{" "}
+      <span className="text-muted-foreground">{t("site.promoFree")}</span>{" "}
       <a href="/register" className="font-medium text-primary hover:underline">
-        Claim now ›
+        {t("site.promoClaim")}
       </a>
       <button
         type="button"
-        aria-label="Close announcement"
+        aria-label={t("site.closePromo")}
         onClick={() => setOpen(false)}
         className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
       >
@@ -36,14 +38,15 @@ export function PromoBar() {
   )
 }
 
-const nav = [
-  { label: "Product", href: "/#types" },
-  { label: "Pricing", href: "/#pricing" },
-  { label: "Use cases", href: "/#use-cases" },
-  { label: "FAQ", href: "/#faq" },
+const nav: { label: Key; href: string }[] = [
+  { label: "site.product", href: "/#types" },
+  { label: "site.pricing", href: "/#pricing" },
+  { label: "site.useCases", href: "/#use-cases" },
+  { label: "site.faq", href: "/#faq" },
 ]
 
 export function SiteHeader() {
+  const t = useT()
   const { user } = useAuth()
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
@@ -52,22 +55,22 @@ export function SiteHeader() {
         <nav className="hidden items-center gap-6 text-sm md:flex">
           {nav.map((n) => (
             <a key={n.href} href={n.href} className="text-foreground/80 hover:text-primary">
-              {n.label}
+              {t(n.label)}
             </a>
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {user ? (
             <Button asChild size="lg" className="rounded-sm px-4">
-              <a href="/app/dashboard">Console</a>
+              <a href="/app/dashboard">{t("nav.console")}</a>
             </Button>
           ) : (
             <>
               <Button asChild variant="ghost" size="lg" className="rounded-sm px-3">
-                <a href="/login">Sign in</a>
+                <a href="/login">{t("site.signIn")}</a>
               </Button>
               <Button asChild size="lg" className="rounded-sm px-4">
-                <a href="/register">Get started</a>
+                <a href="/register">{t("site.getStarted")}</a>
               </Button>
             </>
           )}
@@ -78,11 +81,12 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  const t = useT()
   return (
     <footer className="border-t bg-[#f7f8fa]">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-10 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <Logo />
-        <p>© {new Date().getFullYear()} Saluyu. Built with Go, Gin and PostgreSQL.</p>
+        <p>{t("site.footer", { year: new Date().getFullYear() })}</p>
       </div>
     </footer>
   )

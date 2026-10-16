@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, type Account } from "@/lib/api"
+import { t, tMaybe } from "@/lib/i18n"
 import { cn, toSen } from "@/lib/utils"
 
 type FieldProps = {
@@ -52,11 +53,22 @@ export function Field({ name, label, error, ...input }: FieldProps) {
 export type FormError = { message?: string; fields?: Record<string, string> }
 
 // toFormError splits an API error into a banner message and per-field messages.
+// fieldText turns a validation code like "min_len:3" into words in the current language.
+export function fieldText(code: string): string {
+  const [tag, n] = code.split(":")
+  return tMaybe(`field.${tag}`, { n: n ?? "" }) ?? t("field.invalid")
+}
+
+// toFormError splits an API error into a banner message and per-field messages, translated
+// from the error codes; the server's English text is the fallback for unknown codes.
 export function toFormError(e: unknown): FormError {
   if (e instanceof ApiError) {
-    return e.fields ? { fields: e.fields } : { message: e.message[0].toUpperCase() + e.message.slice(1) }
+    if (e.fieldCodes) return { fields: Object.fromEntries(Object.entries(e.fieldCodes).map(([k, c]) => [k, fieldText(c)])) }
+    if (e.fields) return { fields: e.fields }
+    const known = e.code ? tMaybe(`errors.${e.code}`) : undefined
+    return { message: known ?? e.message[0].toUpperCase() + e.message.slice(1) }
   }
-  return { message: "Cannot reach the server. Is the Go API running?" }
+  return { message: t("common.serverDown") }
 }
 
 export function formValues(e: SubmitEvent) {

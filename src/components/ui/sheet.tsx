@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 import { XIcon } from "lucide-react"
+import { t } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 // Sheet is a Radix Dialog that slides in from an edge. Focus trap, Escape and the
@@ -54,7 +55,7 @@ function SheetContent({
           <SheetPrimitive.Title className="mr-auto text-base font-semibold">{title}</SheetPrimitive.Title>
           <SheetPrimitive.Close className="grid size-11 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground">
             <XIcon className="size-5" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common.close")}</span>
           </SheetPrimitive.Close>
         </div>
         {description ? (

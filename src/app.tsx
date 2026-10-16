@@ -16,6 +16,7 @@ import { BudgetsPage } from "@/pages/budgets"
 import { ReportsPage } from "@/pages/reports"
 import { ContactPage, ContactsPage } from "@/pages/contacts"
 import { GroupsPage } from "@/pages/groups"
+import { browserLocale, setLocale, useT } from "@/lib/i18n"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
@@ -39,12 +40,13 @@ function Redirect({ to }: { to: string }) {
 }
 
 function NotFound() {
+  const t = useT()
   return (
     <div className="grid min-h-svh place-items-center px-4 text-center">
       <div>
         <p className="text-sm font-medium text-primary">404</p>
-        <h1 className="mt-2 text-2xl font-semibold">Page not found</h1>
-        <a href="/" className="mt-4 inline-block text-sm text-primary hover:underline">Back to home</a>
+        <h1 className="mt-2 text-2xl font-semibold">{t("common.pageNotFound")}</h1>
+        <a href="/" className="mt-4 inline-block text-sm text-primary hover:underline">{t("common.backHome")}</a>
       </div>
     </div>
   )
@@ -64,9 +66,17 @@ const Contacts = protect(ContactsPage)
 const Groups = protect(GroupsPage)
 const ContactDetail = protect(({ params }: { params: { id: string } }) => <ContactPage id={params.id} />)
 
+// LocaleSync follows the user's saved language, or the browser's when none is saved.
+function LocaleSync() {
+  const { user } = useAuth()
+  useEffect(() => setLocale(user?.locale ?? browserLocale()), [user?.locale])
+  return null
+}
+
 export function App() {
   return (
     <LocationProvider>
+      <LocaleSync />
       <Router>
         <Route path="/" component={Landing} />
         <Route path="/login" component={() => <AuthPage mode="login" />} />

@@ -8,10 +8,13 @@ import { cn, fmtIDR, todayISO } from "@/lib/utils"
 import { typeDot } from "@/pages/accounts"
 import { DatePicker, fmtDate } from "@/components/picker"
 import { Switch } from "@/components/ui/switch"
+import { Term } from "@/components/term"
+import { useT } from "@/lib/i18n"
 
 // TrialBalancePage replaces the Excel "Neraca" sheet, whose SUM range skipped rows.
 // Every account is listed, so total debit must always equal total credit.
 export function TrialBalancePage() {
+  const t = useT()
   const [asOf, setAsOf] = useState(todayISO())
   const [tb, setTb] = useState<TrialBalance | null>(null)
   const [err, setErr] = useState<FormError>({})
@@ -27,13 +30,14 @@ export function TrialBalancePage() {
 
   return (
     <AppShell
-      title="Trial balance"
+      title={t("tb.title")}
+      term="trialBalance"
       actions={
         <DatePicker
-          aria-label="Trial balance as of"
-          title="As of"
+          aria-label={t("tb.asOfLabel")}
+          title={t("tb.asOfLabel")}
           value={asOf}
-          display={`As of ${fmtDate(asOf)}`}
+          display={t("picker.asOf", { date: fmtDate(asOf) })}
           onChange={(d) => d && setAsOf(d)}
           className="w-full justify-center bg-white font-medium md:h-9 md:w-64"
         />
@@ -45,28 +49,28 @@ export function TrialBalancePage() {
           <div className="flex flex-wrap items-center gap-3">
             {tb.balanced ? (
               <Badge className="rounded-sm bg-emerald-50 px-2.5 py-1 text-emerald-700">
-                <CheckCircle2 /> Balanced
+                <CheckCircle2 /> {t("report.balanced")}
               </Badge>
             ) : (
               <Badge className="rounded-sm bg-rose-50 px-2.5 py-1 text-rose-700">
-                <XCircle /> Not balanced: off by {fmtIDR(Math.abs(tb.total_debit - tb.total_credit))}
+                <XCircle /> {t("report.notBalanced", { amount: fmtIDR(Math.abs(tb.total_debit - tb.total_credit)) })}
               </Badge>
             )}
             <label className="ml-auto flex min-h-11 items-center gap-2 text-sm text-muted-foreground md:min-h-0">
               <Switch checked={showEmpty} onCheckedChange={setShowEmpty} />
-              Show zero balances
+              {t("tb.showZero")}
             </label>
           </div>
         )}
 
         {tb && (
-          <MobileList empty={rows.length === 0 ? "No balances yet." : undefined}>
+          <MobileList empty={rows.length === 0 ? t("tb.empty") : undefined}>
             {rows.map((r) => (
               <MobileItem
                 key={r.account_id}
                 href={`/app/accounts/${r.account_id}`}
                 title={<span className="flex items-center gap-2"><span className={cn("size-2 rounded-full", typeDot[r.type])} />{r.name}</span>}
-                meta={<span className="tabular-nums">{r.code} · {r.debit_balance ? "Debit" : r.credit_balance ? "Credit" : "Zero"}</span>}
+                meta={<span className="tabular-nums">{r.code} · {r.debit_balance ? t("glossary.debit.label") : r.credit_balance ? t("glossary.credit.label") : t("tb.zero")}</span>}
                 value={fmtIDR(r.debit_balance || r.credit_balance)}
               />
             ))}
@@ -80,10 +84,10 @@ export function TrialBalancePage() {
           <TableCard className="hidden md:block">
             <thead>
               <tr>
-                <th className="w-24">Code</th>
-                <th>Account</th>
-                <th className="text-right!">Debit</th>
-                <th className="text-right!">Credit</th>
+                <th className="w-24">{t("acct.code")}</th>
+                <th>{t("tb.account")}</th>
+                <th className="text-right!"><Term k="debit" /></th>
+                <th className="text-right!"><Term k="credit" /></th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
@@ -102,11 +106,11 @@ export function TrialBalancePage() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-8! text-center text-muted-foreground">No balances yet.</td>
+                  <td colSpan={4} className="py-8! text-center text-muted-foreground">{t("tb.empty")}</td>
                 </tr>
               )}
               <tr className="bg-[#eaf2ff]/60 font-semibold">
-                <td colSpan={2}>Total</td>
+                <td colSpan={2}>{t("common.total")}</td>
                 <td className="text-right whitespace-nowrap">{fmtIDR(tb.total_debit)}</td>
                 <td className="text-right whitespace-nowrap">{fmtIDR(tb.total_credit)}</td>
               </tr>

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "preact/compat"
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { intlLocale, useT } from "@/lib/i18n"
 import { cn, todayISO } from "@/lib/utils"
 
 // ---- layout helpers ----
@@ -76,7 +77,9 @@ type SelectPickerProps = {
 
 // SelectPicker replaces <select>: a searchable list (search appears for long lists),
 // options grouped under headings, the current choice marked with a check.
-export function SelectPicker({ id, value, onChange, options, title, placeholder = "Choose…", invalid, className, ...rest }: SelectPickerProps) {
+export function SelectPicker({ id, value, onChange, options, title, placeholder, invalid, className, ...rest }: SelectPickerProps) {
+  const t = useT()
+  placeholder ??= t("common.choose")
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState("")
   const selected = options.find((o) => o.value === value)
@@ -111,8 +114,8 @@ export function SelectPicker({ id, value, onChange, options, title, placeholder 
             autoFocus={false}
             value={q}
             onInput={(e) => setQ((e.target as HTMLInputElement).value)}
-            placeholder="Search"
-            aria-label={`Search ${title}`}
+            placeholder={t("common.search")}
+            aria-label={t("picker.searchIn", { title })}
             className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none md:h-9 md:text-sm"
           />
         </label>
@@ -143,7 +146,7 @@ export function SelectPicker({ id, value, onChange, options, title, placeholder 
             </li>
           )
         })}
-        {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted-foreground">No match.</li>}
+        {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted-foreground">{t("common.noMatch")}</li>}
       </ul>
     </PickerShell>
   )
@@ -151,8 +154,10 @@ export function SelectPicker({ id, value, onChange, options, title, placeholder 
 
 // ---- dates ----
 
-const dayFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
-const monthFmt = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })
+// Formatters follow the current language: "16 Okt 2026" in Indonesian, "16 Oct 2026" in English.
+const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(intlLocale(), { ...opts, timeZone: "UTC" })
+// 2024-01-01 was a Monday: the next seven days give the weekday initials in the current language.
+const weekdays = () => Array.from({ length: 7 }, (_, i) => fmt({ weekday: "short" }).format(new Date(Date.UTC(2024, 0, 1 + i))).slice(0, 2))
 
 const parse = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number)
@@ -161,11 +166,21 @@ const parse = (iso: string) => {
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 const addDays = (s: string, n: number) => iso(new Date(parse(s).getTime() + n * 864e5))
 
-// fmtDate shows "16 Oct 2026": unambiguous, unlike 10/16/2026 vs 16/10/2026.
-export const fmtDate = (s: string) => (s ? dayFmt.format(parse(s)) : "")
+// fmtDate shows "16 Okt 2026": unambiguous, unlike 10/16/2026 vs 16/10/2026.
+export const fmtDate = (s: string) => (s ? fmt({ day: "numeric", month: "short", year: "numeric" }).format(parse(s)) : "")
+
+// fmtPeriod shows a payday period as "25 Sep – 24 Okt 2026" in the current language.
+export function fmtPeriod(p: { start: string; end: string }) {
+  const s = parse(p.start), e = parse(p.end)
+  const startOpts: Intl.DateTimeFormatOptions = s.getUTCFullYear() === e.getUTCFullYear()
+    ? { day: "numeric", month: "short" }
+    : { day: "numeric", month: "short", year: "numeric" }
+  return `${fmt(startOpts).format(s)} – ${fmt({ day: "numeric", month: "short", year: "numeric" }).format(e)}`
+}
 
 // Calendar is a month grid, weeks starting Monday as in Indonesia.
 export function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => void }) {
+  const t = useT()
   const [month, setMonth] = useState(() => (value || todayISO()).slice(0, 7))
   const first = parse(`${month}-01`)
   const lead = (first.getUTCDay() + 6) % 7 // Monday = 0
@@ -176,16 +191,16 @@ export function Calendar({ value, onPick }: { value: string; onPick: (iso: strin
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between">
-        <button type="button" aria-label="Previous month" onClick={() => shift(-1)} className="grid size-11 place-items-center rounded-sm hover:bg-muted md:size-9">
+        <button type="button" aria-label={t("picker.prevMonth")} onClick={() => shift(-1)} className="grid size-11 place-items-center rounded-sm hover:bg-muted md:size-9">
           <ChevronLeft className="size-5" />
         </button>
-        <span className="text-sm font-semibold" aria-live="polite">{monthFmt.format(first)}</span>
-        <button type="button" aria-label="Next month" onClick={() => shift(1)} className="grid size-11 place-items-center rounded-sm hover:bg-muted md:size-9">
+        <span className="text-sm font-semibold" aria-live="polite">{fmt({ month: "long", year: "numeric" }).format(first)}</span>
+        <button type="button" aria-label={t("picker.nextMonth")} onClick={() => shift(1)} className="grid size-11 place-items-center rounded-sm hover:bg-muted md:size-9">
           <ChevronRight className="size-5" />
         </button>
       </div>
       <div className="grid grid-cols-7 text-center text-xs text-muted-foreground" aria-hidden="true">
-        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => <span key={d} className="py-1">{d}</span>)}
+        {weekdays().map((d) => <span key={d} className="py-1">{d}</span>)}
       </div>
       <div className="grid grid-cols-7 gap-1">
         {Array.from({ length: lead }, (_, i) => <span key={`b${i}`} />)}
@@ -228,7 +243,9 @@ type DatePickerProps = {
 }
 
 // DatePicker replaces <input type="date"> with a calendar and quick picks.
-export function DatePicker({ id, value, onChange, title, placeholder = "Any date", clearable, invalid, className, display, ...rest }: DatePickerProps) {
+export function DatePicker({ id, value, onChange, title, placeholder, clearable, invalid, className, display, ...rest }: DatePickerProps) {
+  const t = useT()
+  placeholder ??= t("picker.anyDate")
   const [open, setOpen] = useState(false)
   const pick = (d: string) => (onChange(d), setOpen(false))
   const today = todayISO()
@@ -249,10 +266,10 @@ export function DatePicker({ id, value, onChange, title, placeholder = "Any date
     >
       <div className="grid gap-3">
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={chip} onClick={() => pick(today)}>Today</button>
-          <button type="button" className={chip} onClick={() => pick(addDays(today, -1))}>Yesterday</button>
+          <button type="button" className={chip} onClick={() => pick(today)}>{t("picker.today")}</button>
+          <button type="button" className={chip} onClick={() => pick(addDays(today, -1))}>{t("picker.yesterday")}</button>
           {clearable && value && (
-            <button type="button" className={cn(chip, "text-muted-foreground")} onClick={() => pick("")}>Clear</button>
+            <button type="button" className={cn(chip, "text-muted-foreground")} onClick={() => pick("")}>{t("picker.clear")}</button>
           )}
         </div>
         <Calendar value={value} onPick={pick} />
@@ -263,16 +280,17 @@ export function DatePicker({ id, value, onChange, title, placeholder = "Any date
 
 // DayOfMonthPicker picks 1..28 (a payday that exists in every month).
 export function DayOfMonthPicker({ id, value, onChange }: { id?: string; value: number; onChange: (day: number) => void }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   return (
     <PickerShell
       open={open}
       onOpenChange={setOpen}
-      title="Payday"
+      title={t("picker.payday")}
       wide
       trigger={
         <button type="button" id={id} className={triggerClass}>
-          <span className="flex-1">Day {value} of every month</span>
+          <span className="flex-1">{t("picker.dayOfMonth", { n: value })}</span>
           <ChevronDown className="size-4 opacity-60" />
         </button>
       }
@@ -290,7 +308,7 @@ export function DayOfMonthPicker({ id, value, onChange }: { id?: string; value: 
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">Up to 28 so the day exists in every month.</p>
+      <p className="mt-3 text-xs text-muted-foreground">{t("picker.payday28")}</p>
     </PickerShell>
   )
 }

@@ -5,25 +5,30 @@ import { useEffect, useState } from "preact/hooks"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Logo } from "@/components/site"
 import { useAuth, useInboxCount } from "@/lib/api"
+import { Info, type TermKey } from "@/components/term"
+import { useT, type Key } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { QuickAdd } from "@/components/quick-add"
+import { Toaster } from "@/components/toast"
 
-const nav = [
-  { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/app/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/app/budgets", label: "Budgets", icon: PiggyBank },
-  { href: "/app/contacts", label: "Contacts", icon: Users },
-  { href: "/app/groups", label: "Groups", icon: UsersRound },
-  { href: "/app/reports", label: "Reports", icon: FileText },
-  { href: "/app/accounts", label: "Accounts", icon: BookOpen },
-  { href: "/app/reconcile", label: "Reconcile", icon: ScanSearch },
-  { href: "/app/trial-balance", label: "Trial balance", icon: Scale },
-  { href: "/app/opening", label: "Opening balance", icon: Flag },
-  { href: "/account", label: "Profile", icon: UserRound },
+const nav: { href: string; label: Key; icon: typeof LayoutDashboard }[] = [
+  { href: "/app/dashboard", label: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/app/transactions", label: "nav.transactions", icon: ArrowLeftRight },
+  { href: "/app/budgets", label: "nav.budgets", icon: PiggyBank },
+  { href: "/app/contacts", label: "nav.contacts", icon: Users },
+  { href: "/app/groups", label: "nav.groups", icon: UsersRound },
+  { href: "/app/reports", label: "nav.reports", icon: FileText },
+  { href: "/app/accounts", label: "nav.accounts", icon: BookOpen },
+  { href: "/app/reconcile", label: "nav.reconcile", icon: ScanSearch },
+  { href: "/app/trial-balance", label: "nav.trialBalance", icon: Scale },
+  { href: "/app/opening", label: "nav.opening", icon: Flag },
+  { href: "/account", label: "nav.profile", icon: UserRound },
 ]
 
 function NavLinks({ path, inbox }: { path: string; inbox: number }) {
+  const t = useT()
   return (
-    <nav className="flex flex-col gap-1 px-3" aria-label="Console">
+    <nav className="flex flex-col gap-1 px-3" aria-label={t("nav.console")}>
       {nav.map(({ href, label, icon: Icon }) => {
         const active = path === href || path.startsWith(href + "/")
         return (
@@ -37,11 +42,11 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
             )}
           >
             <Icon className="size-4" />
-            {label}
+            {t(label)}
             {href === "/app/groups" && inbox > 0 && (
               <span className="ml-auto rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground tabular-nums">
                 {inbox}
-                <span className="sr-only"> waiting for you</span>
+                <span className="sr-only"> {t("nav.waiting")}</span>
               </span>
             )}
           </a>
@@ -53,7 +58,13 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
 
 // AppShell is the console layout: a fixed sidebar on desktop; on phones a top bar whose
 // menu button opens the same links in a drawer from the left.
-export function AppShell({ title, actions, children }: { title: string; actions?: ComponentChildren; children: ComponentChildren }) {
+export function AppShell({ title, term, actions, children }: {
+  title: string
+  term?: TermKey // shows an ⓘ next to the title explaining the page's finance term
+  actions?: ComponentChildren
+  children: ComponentChildren
+}) {
+  const t = useT()
   const { path } = useLocation()
   const { user } = useAuth()
   const inbox = useInboxCount()
@@ -66,6 +77,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
         <div className="flex h-14 items-center px-5">
           <Logo />
         </div>
+        <div className="px-3 pb-3"><QuickAdd variant="sidebar" /></div>
         <NavLinks path={path} inbox={inbox} />
         {user && (
           <p className="truncate px-6 pt-6 text-xs text-muted-foreground" title={user.email}>
@@ -77,7 +89,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
       <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-2 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
         <Sheet open={menu} onOpenChange={setMenu}>
           <SheetTrigger asChild>
-            <button type="button" aria-label={inbox > 0 ? `Menu, ${inbox} waiting` : "Menu"} className="relative grid size-11 place-items-center rounded-sm hover:bg-muted">
+            <button type="button" aria-label={inbox > 0 ? t("nav.menuWaiting", { n: inbox }) : t("nav.menu")} className="relative grid size-11 place-items-center rounded-sm hover:bg-muted">
               <Menu className="size-5" />
               {inbox > 0 && <span className="absolute top-2 right-2 size-2 rounded-full bg-primary" />}
             </button>
@@ -97,12 +109,17 @@ export function AppShell({ title, actions, children }: { title: string; actions?
           {/* Fixed-height title row, controls centred in it: the title sits at the same spot on every
               page whatever controls the page puts next to it (they wrap below it on phones). */}
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-6 pb-5 md:min-h-[5.75rem] lg:px-8 lg:pt-8 lg:pb-6">
-            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+            <h1 className="flex items-center gap-1.5 text-2xl font-semibold tracking-tight">
+              {title}
+              {term && <Info k={term} />}
+            </h1>
             {actions}
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 pb-[max(4rem,env(safe-area-inset-bottom))] lg:px-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 pb-[max(6rem,env(safe-area-inset-bottom))] lg:px-8 lg:pb-16">{children}</main>
       </div>
+      <QuickAdd variant="fab" />
+      <Toaster />
     </div>
   )
 }
@@ -130,7 +147,9 @@ export function MobileList({ children, empty, className }: { children: Component
   )
 }
 
-export function MobileItem({ title, meta, value, valueClass, href, actions }: {
+export function MobileItem({ lead, title, meta, value, valueClass, href, onClick, actions }: {
+  onClick?: () => void // the whole row opens something, like href but without navigating
+  lead?: ComponentChildren // sits outside the link, so it can be its own button
   title: ComponentChildren
   meta?: ComponentChildren
   value?: ComponentChildren
@@ -153,11 +172,14 @@ export function MobileItem({ title, meta, value, valueClass, href, actions }: {
     </>
   )
   return (
-    <li className="px-4 py-3">
+    <li className="flex items-center gap-3 px-4 py-3">
+      {lead}
       {href ? (
-        <a href={href} className="flex min-h-11 items-center gap-3 text-sm">{body}</a>
+        <a href={href} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-sm">{body}</a>
+      ) : onClick ? (
+        <button type="button" onClick={onClick} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left text-sm">{body}</button>
       ) : (
-        <div className="flex min-h-11 items-center gap-3 text-sm">{body}</div>
+        <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-sm">{body}</div>
       )}
     </li>
   )

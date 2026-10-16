@@ -1,4 +1,4 @@
-import { Info, Loader2, Lock } from "lucide-react"
+import { Info, Loader2 } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
-  ApiError,
   getOpening,
   listAccounts,
   listContacts,
@@ -22,6 +21,8 @@ import {
 } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { typeDot } from "@/pages/accounts"
+import { Term } from "@/components/term"
+import { useT } from "@/lib/i18n"
 
 // Amount inputs are keyed by account id, or "accountId:contactId" for a person's receivable/payable.
 const key = (accountId: string, contactId?: string | null) => (contactId ? `${accountId}:${contactId}` : accountId)
@@ -29,6 +30,7 @@ const key = (accountId: string, contactId?: string | null) => (contactId ? `${ac
 // OpeningPage replaces the missing "saldo awal" in the Excel: the real balance of every
 // asset and liability on the day the books open. The rest is net worth (3001).
 export function OpeningPage({ user }: { user: User }) {
+  const t = useT()
   const { route } = useLocation()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [opening, setOpeningState] = useState<Opening | null>(null)
@@ -74,7 +76,7 @@ export function OpeningPage({ user }: { user: User }) {
     e.preventDefault()
     const date = (new FormData(e.currentTarget as HTMLFormElement).get("start_date") as string) || ""
     if (invalid.length > 0) {
-      setErr({ message: `Check the amount for ${invalid.join(", ")}.` })
+      setErr({ message: t("open.checkAmount", { names: invalid.join(", ") }) })
       return
     }
     setBusy(true)
@@ -87,43 +89,35 @@ export function OpeningPage({ user }: { user: User }) {
       await setOpening({ start_date: date, items })
       route("/app/dashboard")
     } catch (e) {
-      setErr(e instanceof ApiError ? toFormError(e) : { message: "Cannot reach the server." })
+      setErr(toFormError(e))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <AppShell title="Opening balance">
+    <AppShell title={t("open.title")} term="opening">
       <div className="grid gap-6">
         {firstTime && (
           <Alert className="rounded-sm border-[#cfe0ff] bg-[#f4f8ff]">
             <Info className="text-primary" />
             <AlertDescription className="text-foreground">
-              Welcome! Before recording transactions, enter what you really have today: open your bank and e-wallet
-              apps and count the cash in your wallet. Leave an account empty if it is zero.
+              {t("open.welcome")}
             </AlertDescription>
           </Alert>
         )}
 
-        {opening && !opening.editable ? (
-          <Alert className="rounded-sm">
-            <Lock />
-            <AlertDescription>
-              Your books opened on <span className="font-medium">{opening.start_date}</span> and already have transactions, so
-              the opening balance is locked. Use <a href="/app/reconcile" className="text-primary hover:underline">Reconcile</a>{" "}
-              to correct a balance from a later date.
-            </AlertDescription>
-          </Alert>
-        ) : (
+        {opening?.entry && !firstTime && (
+          <p className="text-sm text-muted-foreground">{t("open.editNote")}</p>
+        )}
+        {(
           <form onSubmit={onSubmit} noValidate className="grid gap-6">
             <Status err={err} ok="" />
             <Card className="rounded-sm">
               <CardContent className="grid gap-4 sm:grid-cols-[14rem_1fr] sm:items-end">
-                <DateField name="start_date" label="Books open on" defaultValue={opening?.start_date ?? todayISO()} error={err.fields?.start_date} />
+                <DateField name="start_date" label={t("open.booksOpen")} defaultValue={opening?.start_date ?? todayISO()} error={err.fields?.start_date} />
                 <p className="text-sm text-muted-foreground">
-                  Transactions before this date cannot be recorded. Pick the day these balances are true, for example
-                  the day your salary arrives.
+                  {t("open.booksOpenHint")}
                 </p>
               </CardContent>
             </Card>
@@ -135,7 +129,7 @@ export function OpeningPage({ user }: { user: User }) {
                 <section key={type} className="grid gap-2">
                   <h2 className="flex items-center gap-2 font-semibold">
                     <span className={cn("size-2.5 rounded-full", typeDot[type])} />
-                    {type === "Asset" ? "What you have" : "What you owe"}
+                    <Term k={type === "Asset" ? "asset" : "liability"}>{type === "Asset" ? t("open.have") : t("open.owe")}</Term>
                   </h2>
                   <TableCard>
                     <tbody>
@@ -165,11 +159,11 @@ export function OpeningPage({ user }: { user: User }) {
             })}
 
             <section className="grid gap-2">
-              <h2 className="font-semibold">Between you and other people</h2>
+              <h2 className="font-semibold"><Term k="receivable">{t("open.people")}</Term></h2>
               {contacts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Someone owed you money, or you owed someone, on this date?{" "}
-                  <a href="/app/contacts" className="text-primary hover:underline">Add them as contacts</a> first, then come back.
+                  <a href="/app/contacts" className="text-primary hover:underline">{t("open.addContacts")}</a>{t("open.thenBack")}
                 </p>
               ) : (
                 <>
@@ -181,7 +175,7 @@ export function OpeningPage({ user }: { user: User }) {
                         {[perPerson.receivable, perPerson.payable].map((a) =>
                           a ? (
                             <label key={a.id} className="grid gap-1 text-xs text-muted-foreground">
-                              {a.code === "1101" ? "Owes you (Rp)" : "You owe (Rp)"}
+                              {a.code === "1101" ? t("open.owesYou") : t("open.youOwe")}
                               <Input
                                 inputMode="decimal"
                                 placeholder="0"
@@ -199,9 +193,9 @@ export function OpeningPage({ user }: { user: User }) {
                 <TableCard className="hidden md:block">
                   <thead>
                     <tr>
-                      <th>Contact</th>
-                      <th className="w-56">Owes you (Rp)</th>
-                      <th className="w-56">You owe (Rp)</th>
+                      <th>{t("open.contact")}</th>
+                      <th className="w-56">{t("open.owesYou")}</th>
+                      <th className="w-56">{t("open.youOwe")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -212,7 +206,7 @@ export function OpeningPage({ user }: { user: User }) {
                           a ? (
                             <td key={a.id}>
                               <Input
-                                aria-label={`${c.name}: ${a.code === "1101" ? "owes you" : "you owe"}`}
+                                aria-label={`${c.name}: ${a.code === "1101" ? t("open.owesYouShort") : t("open.youOweShort")}`}
                                 inputMode="decimal"
                                 placeholder="0"
                                 value={amounts[key(a.id, c.id)] ?? ""}
@@ -232,10 +226,10 @@ export function OpeningPage({ user }: { user: User }) {
 
             <Card className="rounded-sm">
               <CardContent className="grid gap-2 text-sm tabular-nums sm:max-w-md">
-                <p className="flex justify-between"><span>Total assets</span><span>{fmtIDR(assets)}</span></p>
-                <p className="flex justify-between"><span>Total liabilities</span><span>− {fmtIDR(liabilities)}</span></p>
+                <p className="flex justify-between"><span>{t("open.totalAssets")}</span><span>{fmtIDR(assets)}</span></p>
+                <p className="flex justify-between"><span>{t("open.totalDebts")}</span><span>− {fmtIDR(liabilities)}</span></p>
                 <p className="flex justify-between border-t pt-2 font-semibold">
-                  <span>Net worth (3001 Ekuitas Saldo Awal)</span>
+                  <span><Term k="equity">{t("open.netWorth")}</Term></span>
                   <span className={cn(assets - liabilities < 0 && "text-destructive")}>{fmtIDR(assets - liabilities)}</span>
                 </p>
               </CardContent>
@@ -244,7 +238,7 @@ export function OpeningPage({ user }: { user: User }) {
             <div>
               <Button type="submit" disabled={busy} className="h-10 rounded-sm px-8">
                 {busy && <Loader2 className="animate-spin" />}
-                {firstTime ? "Open my books" : "Save opening balance"}
+                {firstTime ? t("open.openBooks") : t("open.save")}
               </Button>
             </div>
           </form>

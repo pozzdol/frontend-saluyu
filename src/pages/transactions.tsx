@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal, Trash2 } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react"
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
 import { AmountField, CheckboxField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -12,7 +12,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   ApiError,
   perContact,
-  deleteEntry,
   listAccounts,
   listEntries,
   postEntry,
@@ -22,8 +21,13 @@ import {
   type EntryQuery,
   type PostEntryInput,
   type User,
+  useEntriesVersion,
+  useHiddenEntries,
 } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
+import { Info, Term } from "@/components/term"
+import { t, useT, type Key } from "@/lib/i18n"
+import { EntryDetailSheet } from "@/components/entry-detail"
 
 // daysBetween counts whole days from date a to date b (YYYY-MM-DD), DST-safe via UTC.
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5)
@@ -31,10 +35,10 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 type FormKind = PostEntryInput["kind"]
 
 // Which account types each form moves money between. Mirrors kindRules in the Go service.
-const kinds: Record<FormKind, { label: string; icon: typeof ArrowUpRight; from: AccountType; to: AccountType; fromLabel: string; toLabel: string }> = {
-  expense: { label: "Expense", icon: ArrowUpRight, from: "Asset", to: "Expense", fromLabel: "Paid from", toLabel: "Category" },
-  income: { label: "Income", icon: ArrowDownLeft, from: "Revenue", to: "Asset", fromLabel: "Source", toLabel: "Received into" },
-  transfer: { label: "Transfer", icon: ArrowLeftRight, from: "Asset", to: "Asset", fromLabel: "From", toLabel: "To" },
+export const kinds: Record<FormKind, { label: Key; icon: typeof ArrowUpRight; from: AccountType; to: AccountType; fromLabel: Key; toLabel: Key }> = {
+  expense: { label: "kind.expense", icon: ArrowUpRight, from: "Asset", to: "Expense", fromLabel: "tx.paidFrom", toLabel: "tx.category" },
+  income: { label: "kind.income", icon: ArrowDownLeft, from: "Revenue", to: "Asset", fromLabel: "tx.source", toLabel: "tx.receivedInto" },
+  transfer: { label: "kind.transfer", icon: ArrowLeftRight, from: "Asset", to: "Asset", fromLabel: "tx.from", toLabel: "tx.to" },
 }
 
 export const kindBadge: Record<string, string> = {
@@ -49,6 +53,7 @@ export const kindBadge: Record<string, string> = {
 }
 
 function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
+  const t = useT()
   const [kind, setKind] = useState<FormKind>("expense")
   const rule = kinds[kind]
   // 1101/2101 need a person: those go through the Contacts page instead.
@@ -77,14 +82,14 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
 
   const form = useForm(async (v, el) => {
     const amount = toSen(v.amount)
-    if (!(amount > 0)) throw new ApiError(400, "validation failed", { amount: "must be a positive amount" })
+    if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
     await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }) })
     // Keep date and accounts for the next entry: people usually log several in a row.
     ;(el.elements.namedItem("amount") as HTMLInputElement).value = ""
     ;(el.elements.namedItem("description") as HTMLInputElement).value = ""
     setNextPeriod(false)
     onPosted()
-    return `${rule.label} saved.`
+    return t("tx.savedKind", { kind: t(rule.label) })
   })
   const err = form.err
 
@@ -92,13 +97,13 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
     <Card className="rounded-sm">
       <CardContent>
         <Segmented
-          label="Transaction type"
+          label={t("tx.type")}
           className="mb-5"
           value={kind}
           onChange={setKind}
           items={(Object.keys(kinds) as FormKind[]).map((k) => {
             const Icon = kinds[k].icon
-            return { value: k, label: <><Icon className="size-4" />{kinds[k].label}</> }
+            return { value: k, label: <><Icon className="size-4" />{t(kinds[k].label)}</> }
           })}
         />
 
@@ -107,20 +112,20 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
             <Status err={err} ok={form.ok} />
           </div>
           <div className="md:col-span-2">
-            <AmountField name="amount" label="Amount (Rp)" placeholder="25.000" error={err.fields?.amount} />
+            <AmountField name="amount" label={t("common.amount")} placeholder="25.000" error={err.fields?.amount} />
           </div>
-          <DateField name="entry_date" label="Date" value={date} onChange={setDate} error={err.fields?.entry_date} className="md:col-span-1" />
-          <SelectField name="from" label={rule.fromLabel} value={from} onChange={setFrom} options={accountOptions(fromOptions)} error={err.fields?.from_account_id} className="md:col-span-3" />
-          <SelectField name="to" label={rule.toLabel} value={to} onChange={setTo} options={accountOptions(toOptions)} error={err.fields?.to_account_id} className="md:col-span-3" />
+          <DateField name="entry_date" label={t("common.date")} value={date} onChange={setDate} error={err.fields?.entry_date} className="md:col-span-1" />
+          <SelectField name="from" label={t(rule.fromLabel)} value={from} onChange={setFrom} options={accountOptions(fromOptions)} error={err.fields?.from_account_id} className="md:col-span-3" />
+          <SelectField name="to" label={t(rule.toLabel)} value={to} onChange={setTo} options={accountOptions(toOptions)} error={err.fields?.to_account_id} className="md:col-span-3" />
           <div className="md:col-span-3">
-            <Field name="description" label="Note" placeholder={kind === "income" ? "Gaji September" : "Makan siang"} error={err.fields?.description} />
+            <Field name="description" label={t("common.note")} placeholder={kind === "income" ? t("tx.notePlaceholderIncome") : t("tx.notePlaceholderExpense")} error={err.fields?.description} />
           </div>
           {showNext && (
             <div className="md:col-span-6">
               <CheckboxField
                 name="next_period"
-                label="Count toward next period"
-                hint={`Salary that arrives early: it will show in the period starting ${fmtDate(nextStart)}.`}
+                label={t("tx.nextPeriod")}
+                hint={t("tx.nextPeriodHint", { date: fmtDate(nextStart) })}
                 checked={nextPeriod}
                 onChange={setNextPeriod}
               />
@@ -129,14 +134,13 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
           <div className="flex items-end md:col-span-6">
             <Button type="submit" disabled={form.busy} className="h-10 w-full rounded-sm px-8 md:w-auto">
               {form.busy && <Loader2 className="animate-spin" />}
-              Save {rule.label.toLowerCase()}
+              {t("tx.saveKind", { kind: t(rule.label).toLowerCase() })}
             </Button>
           </div>
         </form>
         {kind === "income" && (
           <p className="mt-3 text-xs text-muted-foreground">
-            Got a refund? Record it as income from <span className="font-medium">4003 · Pengembalian</span>, so expense
-            totals never go negative.
+            {t("tx.refundHint", { account: "4003 · Pengembalian" })}
           </p>
         )}
       </CardContent>
@@ -147,46 +151,8 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
 // amountOf is the size of an entry: its total debits (equal to its total credits).
 const amountOf = (e: Entry) => e.lines.reduce((s, l) => s + l.debit, 0)
 
-function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
-  const [armed, setArmed] = useState(false)
-  const [busy, setBusy] = useState(false)
-  if (!armed)
-    return (
-      <Button variant="ghost" size="icon-sm" aria-label="Delete entry" onClick={() => setArmed(true)}>
-        <Trash2 />
-      </Button>
-    )
-  return (
-    <span className="flex items-center gap-1">
-      <Button
-        variant="destructive"
-        size="sm"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true)
-          await onConfirm().finally(() => setBusy(false))
-        }}
-      >
-        Delete
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setArmed(false)}>
-        Cancel
-      </Button>
-    </span>
-  )
-}
-
-const kindOptions = [
-  { value: "", label: "All types" },
-  { value: "income", label: "Income" },
-  { value: "expense", label: "Expense" },
-  { value: "transfer", label: "Transfer" },
-  { value: "loan", label: "Loan" },
-  { value: "repayment", label: "Repayment" },
-  { value: "opening", label: "Opening" },
-  { value: "cash_count", label: "Cash count" },
-  { value: "adjustment", label: "Adjustment" },
-]
+const kinds8 = ["income", "expense", "transfer", "loan", "repayment", "opening", "cash_count", "adjustment"] as const
+const kindOptions = () => [{ value: "", label: t("tx.allTypes") }, ...kinds8.map((k) => ({ value: k, label: t(`kind.${k}`) }))]
 
 // JournalFilters sit inline on desktop; on phones they live behind a "Filters" button in a
 // bottom sheet so the list stays on screen.
@@ -194,22 +160,23 @@ function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQue
   const mobile = useIsMobile()
   const [open, setOpen] = useState(false)
   const active = [q.q, q.kind, q.account_id, q.from, q.to].filter(Boolean).length
-  const accountOpts = [{ value: "", label: "All accounts" }, ...accountOptions(accounts)]
+  const t = useT()
+  const accountOpts = [{ value: "", label: t("tx.allAccounts") }, ...accountOptions(accounts)]
 
   const controls = (
     <>
       <Input
         type="search"
-        placeholder="Search note"
-        aria-label="Search note"
+        placeholder={t("tx.searchNote")}
+        aria-label={t("tx.searchNote")}
         defaultValue={q.q ?? ""}
         className="h-11 rounded-sm bg-white md:h-9 md:w-44"
         onChange={(e) => set({ q: (e.target as HTMLInputElement).value })}
       />
-      <SelectPicker aria-label="Type" title="Type" value={q.kind ?? ""} options={kindOptions} onChange={(v) => set({ kind: v })} className="bg-white md:h-9 md:w-40" />
-      <SelectPicker aria-label="Account" title="Account" value={q.account_id ?? ""} options={accountOpts} onChange={(v) => set({ account_id: v })} className="bg-white md:h-9 md:w-52" />
-      <DatePicker aria-label="From date" title="From" placeholder="From" clearable value={q.from ?? ""} onChange={(v) => set({ from: v })} className="bg-white md:h-9 md:w-40" />
-      <DatePicker aria-label="To date" title="To" placeholder="To" clearable value={q.to ?? ""} onChange={(v) => set({ to: v })} className="bg-white md:h-9 md:w-40" />
+      <SelectPicker aria-label={t("tx.type")} title={t("tx.type")} value={q.kind ?? ""} options={kindOptions()} onChange={(v) => set({ kind: v })} className="bg-white md:h-9 md:w-40" />
+      <SelectPicker aria-label={t("tx.allAccounts")} title={t("tx.allAccounts")} value={q.account_id ?? ""} options={accountOpts} onChange={(v) => set({ account_id: v })} className="bg-white md:h-9 md:w-52" />
+      <DatePicker aria-label={t("tx.fromDate")} title={t("tx.fromDate")} placeholder={t("tx.from")} clearable value={q.from ?? ""} onChange={(v) => set({ from: v })} className="bg-white md:h-9 md:w-40" />
+      <DatePicker aria-label={t("tx.toDate")} title={t("tx.toDate")} placeholder={t("tx.to")} clearable value={q.to ?? ""} onChange={(v) => set({ to: v })} className="bg-white md:h-9 md:w-40" />
     </>
   )
 
@@ -218,15 +185,15 @@ function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQue
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="outline" className="rounded-sm bg-white">
-          <SlidersHorizontal /> Filters{active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
+          <SlidersHorizontal /> {t("common.filters")}{active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
         </Button>
       </SheetTrigger>
-      <SheetContent side="bottom" title="Filter journal">
+      <SheetContent side="bottom" title={t("tx.filterJournal")}>
         <div className="grid gap-3 pb-2">
           {controls}
-          <Button className="rounded-sm" onClick={() => setOpen(false)}>Show results</Button>
+          <Button className="rounded-sm" onClick={() => setOpen(false)}>{t("common.showResults")}</Button>
           {active > 0 && (
-            <Button variant="ghost" onClick={() => (set({ q: "", kind: "", account_id: "", from: "", to: "" }), setOpen(false))}>Clear filters</Button>
+            <Button variant="ghost" onClick={() => (set({ q: "", kind: "", account_id: "", from: "", to: "" }), setOpen(false))}>{t("common.clearFilters")}</Button>
           )}
         </div>
       </SheetContent>
@@ -235,11 +202,16 @@ function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQue
 }
 
 export function Transactions({ user }: { user: User }) {
+  const t = useT()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [q, setQ] = useState<EntryQuery>({ page: 1, limit: 20 })
   const [data, setData] = useState<{ entries: Entry[]; total: number } | null>(null)
   const [loadErr, setLoadErr] = useState<FormError>({})
   const [reload, setReload] = useState(0)
+  const version = useEntriesVersion()
+  const hidden = useHiddenEntries()
+  const [openId, setOpenId] = useState<string | null>(null)
+  const entries = data?.entries.filter((e) => !hidden.has(e.id))
 
   useEffect(() => {
     listAccounts().then(setAccounts).catch((e) => setLoadErr(toFormError(e)))
@@ -248,37 +220,38 @@ export function Transactions({ user }: { user: User }) {
     listEntries(q)
       .then((r) => setData({ entries: r.data, total: r.total }))
       .catch((e) => setLoadErr(toFormError(e)))
-  }, [q, reload])
+  }, [q, reload, version])
 
   const pages = data ? Math.max(1, Math.ceil(data.total / (q.limit ?? 20))) : 1
   const set = (patch: EntryQuery) => setQ((old) => ({ ...old, ...patch, page: patch.page ?? 1 }))
   const accountOptionsSorted = useMemo(() => accounts.slice().sort((a, b) => a.code.localeCompare(b.code)), [accounts])
 
   return (
-    <AppShell title="Transactions">
+    <AppShell title={t("tx.title")} term="journal">
       <div className="grid gap-6">
         <EntryForm accounts={accounts} startDay={user.period_start_day} onPosted={() => setReload((n) => n + 1)} />
         <Status err={loadErr} ok="" />
 
         <section aria-labelledby="journal-title" className="grid gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 id="journal-title" className="mr-auto text-lg font-semibold">Journal</h2>
+            <h2 id="journal-title" className="mr-auto text-lg font-semibold"><Term k="journal">{t("tx.journal")}</Term></h2>
             <JournalFilters q={q} set={set} accounts={accountOptionsSorted} />
           </div>
 
-          <MobileList empty={data && data.entries.length === 0 ? "No transactions yet. Record your first one above." : undefined}>
-            {data?.entries.map((e) => {
+          <MobileList empty={data && data.entries.length === 0 ? t("tx.empty") : undefined}>
+            {entries?.map((e) => {
               const side = e.kind === "income" ? e.lines.filter((l) => l.credit > 0) : e.lines.filter((l) => l.debit > 0)
               const parts = side.map((l) => l.contact_name ?? l.name)
               return (
                 <MobileItem
                   key={e.id}
+                  onClick={() => setOpenId(e.id)}
                   title={e.description || parts.join(", ")}
                   meta={
                     <>
                       <span>{fmtDate(e.entry_date)}</span>
-                      <Badge className={cn("rounded-sm capitalize", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{e.kind.replace("_", " ")}</Badge>
-                      {e.period_date && <span className="text-primary">→ next period</span>}
+                      <Badge className={cn("rounded-sm", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{t(`kind.${e.kind}`)}</Badge>
+                      {e.period_date && <span className="text-primary">{t("tx.nextPeriodMark")}</span>}
                       <span className="w-full truncate">
                         {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")} ← {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")}
                       </span>
@@ -286,15 +259,6 @@ export function Transactions({ user }: { user: User }) {
                   }
                   value={fmtIDR(amountOf(e))}
                   valueClass={e.kind === "income" ? "text-emerald-700" : e.kind === "expense" ? "text-rose-700" : undefined}
-                  actions={
-                    <DeleteButton
-                      onConfirm={() =>
-                        deleteEntry(e.id)
-                          .then(() => setReload((n) => n + 1))
-                          .catch((err) => setLoadErr(toFormError(err)))
-                      }
-                    />
-                  }
                 />
               )
             })}
@@ -303,28 +267,28 @@ export function Transactions({ user }: { user: User }) {
           <TableCard className="hidden md:block">
             <thead>
               <tr>
-                <th>No</th>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Note</th>
-                <th>Debit → Credit</th>
-                <th className="text-right!">Amount</th>
-                <th><span className="sr-only">Actions</span></th>
+                <th>{t("tx.no")}</th>
+                <th>{t("common.date")}</th>
+                <th>{t("tx.type")}</th>
+                <th>{t("common.note")}</th>
+                <th><span className="inline-flex items-center gap-1">{t("tx.debitCredit")} <Info k="debit" /></span></th>
+                <th className="text-right!">{t("common.amount")}</th>
+                <th><span className="sr-only">{t("tx.actions")}</span></th>
               </tr>
             </thead>
             <tbody>
-              {data?.entries.map((e) => {
+              {entries?.map((e) => {
                 const who = (l: Entry["lines"][number]) => (l.contact_name ? `${l.name} (${l.contact_name})` : l.name)
                 const dr = e.lines.filter((l) => l.debit > 0).map(who).join(", ")
                 const cr = e.lines.filter((l) => l.credit > 0).map(who).join(", ")
                 return (
-                  <tr key={e.id}>
+                  <tr key={e.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setOpenId(e.id)}>
                     <td className="text-muted-foreground tabular-nums">{e.entry_no}</td>
                     <td className="whitespace-nowrap tabular-nums">{fmtDate(e.entry_date)}
-                      {e.period_date && <span className="block text-xs text-primary">→ next period</span>}
+                      {e.period_date && <span className="block text-xs text-primary">{t("tx.nextPeriodMark")}</span>}
                     </td>
                     <td>
-                      <Badge className={cn("rounded-sm capitalize", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{e.kind.replace("_", " ")}</Badge>
+                      <Badge className={cn("rounded-sm", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{t(`kind.${e.kind}`)}</Badge>
                     </td>
                     <td className="max-w-56 truncate">{e.description || <span className="text-muted-foreground">—</span>}</td>
                     <td className="whitespace-nowrap">
@@ -332,13 +296,9 @@ export function Transactions({ user }: { user: User }) {
                     </td>
                     <td className="text-right font-medium whitespace-nowrap tabular-nums">{fmtIDR(amountOf(e))}</td>
                     <td className="text-right">
-                      <DeleteButton
-                        onConfirm={() =>
-                          deleteEntry(e.id)
-                            .then(() => setReload((n) => n + 1))
-                            .catch((err) => setLoadErr(toFormError(err)))
-                        }
-                      />
+                      <Button variant="ghost" size="icon-sm" aria-label={t("ed.open", { no: e.entry_no })} onClick={() => setOpenId(e.id)}>
+                        <ChevronRight />
+                      </Button>
                     </td>
                   </tr>
                 )
@@ -346,7 +306,7 @@ export function Transactions({ user }: { user: User }) {
               {data && data.entries.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-10! text-center text-muted-foreground">
-                    No transactions yet. Record your first one above.
+                    {t("tx.empty")}
                   </td>
                 </tr>
               )}
@@ -354,19 +314,20 @@ export function Transactions({ user }: { user: User }) {
           </TableCard>
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{data ? `${data.total} transaction${data.total === 1 ? "" : "s"}` : "Loading…"}</span>
+            <span>{data ? (data.total === 1 ? t("tx.countOne") : t("tx.count", { n: data.total })) : t("common.loading")}</span>
             <span className="flex items-center gap-2">
-              <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={(q.page ?? 1) <= 1} onClick={() => set({ page: (q.page ?? 1) - 1 })}>
+              <Button variant="outline" size="icon-sm" aria-label={t("tx.prevPage")} disabled={(q.page ?? 1) <= 1} onClick={() => set({ page: (q.page ?? 1) - 1 })}>
                 <ChevronLeft />
               </Button>
-              Page {q.page} of {pages}
-              <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={(q.page ?? 1) >= pages} onClick={() => set({ page: (q.page ?? 1) + 1 })}>
+              {t("tx.page", { page: q.page ?? 1, pages })}
+              <Button variant="outline" size="icon-sm" aria-label={t("tx.nextPage")} disabled={(q.page ?? 1) >= pages} onClick={() => set({ page: (q.page ?? 1) + 1 })}>
                 <ChevronRight />
               </Button>
             </span>
           </div>
         </section>
       </div>
+      <EntryDetailSheet id={openId} onClose={() => setOpenId(null)} />
     </AppShell>
   )
 }

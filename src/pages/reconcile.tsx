@@ -5,8 +5,10 @@ import { DateField, Field, SelectField, Status, accountOptions, toFormError, typ
 import { Segmented } from "@/components/segmented"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ApiError, cashCount, getBalance, listAccounts, reconcile, type Account } from "@/lib/api"
+import { cashCount, getBalance, listAccounts, reconcile, type Account } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
+import { Info } from "@/components/term"
+import { useT } from "@/lib/i18n"
 
 type Mode = "cash" | "bank"
 
@@ -15,6 +17,7 @@ const perContact = new Set(["1101", "2101"])
 // ReconcilePage fixes the Excel problem of cash that never went down: count what you really
 // have, and the gap becomes an entry (unrecorded spending, found money, or a bank fee).
 export function ReconcilePage() {
+  const t = useT()
   const [mode, setMode] = useState<Mode>("cash")
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState("")
@@ -71,31 +74,31 @@ export function ReconcilePage() {
     try {
       const body = { account_id: accountId, date, actual: actualSen }
       const res = mode === "cash" ? await cashCount(body) : await reconcile({ ...body, counter_account_id: counterId })
-      if (res.diff === 0) setOk("Books already match. Nothing was posted.")
+      if (res.diff === 0) setOk(t("rec.matched"))
       else {
         const entry = res.entry!
         const other = entry.lines.find((l) => l.account_id !== accountId)!
-        setOk(`Posted ${fmtIDR(Math.abs(res.diff))} to ${other.code} · ${other.name} (entry #${entry.entry_no}).`)
+        setOk(t("rec.posted", { amount: fmtIDR(Math.abs(res.diff)), account: `${other.code} · ${other.name}`, no: entry.entry_no }))
       }
       setActual("")
       setReload((n) => n + 1)
     } catch (e) {
-      setErr(e instanceof ApiError ? toFormError(e) : { message: "Cannot reach the server." })
+      setErr(toFormError(e))
     } finally {
       setBusy(false)
     }
   }
 
   const tabs: { mode: Mode; label: string; icon: typeof Wallet }[] = [
-    { mode: "cash", label: "Cash count", icon: Wallet },
-    { mode: "bank", label: "Bank statement", icon: ScanSearch },
+    { mode: "cash", label: t("rec.cash"), icon: Wallet },
+    { mode: "bank", label: t("rec.bank"), icon: ScanSearch },
   ]
 
   return (
-    <AppShell title="Reconcile">
+    <AppShell title={t("rec.title")} term="reconcile">
       <div className="grid max-w-3xl gap-6">
         <Segmented
-          label="Reconcile type"
+          label={t("rec.tabs")}
           value={mode}
           onChange={setMode}
           items={tabs.map(({ mode: m, label: l, icon: Icon }) => ({ value: m, label: <><Icon className="size-4" />{l}</> }))}
@@ -103,8 +106,8 @@ export function ReconcilePage() {
 
         <p className="text-sm text-muted-foreground">
           {mode === "cash"
-            ? "Count the money in your wallet. Missing cash is posted as 5199 Beban Tunai Lain-lain (spending you did not record); extra cash as 4199 Pendapatan Lain-lain."
-            : "Enter the balance from your bank or e-wallet app. The difference goes to the account you pick, such as an admin fee or interest."}
+            ? <>{t("rec.cashIntro")} <Info k="cashCount" /></>
+            : t("rec.bankIntro")}
         </p>
 
         <Card className="rounded-sm">
@@ -113,23 +116,23 @@ export function ReconcilePage() {
               <div className="sm:col-span-2">
                 <Status err={err} ok={ok} />
               </div>
-              <SelectField name="account_id" label="Account" value={accountId} onChange={setAccountId} options={accountOptions(targets)} error={err.fields?.account_id} />
-              <DateField name="date" label="Date" value={date} onChange={setDate} />
+              <SelectField name="account_id" label={t("rec.account")} value={accountId} onChange={setAccountId} options={accountOptions(targets)} error={err.fields?.account_id} />
+              <DateField name="date" label={t("common.date")} value={date} onChange={setDate} />
 
               <div className="grid grid-cols-3 gap-2 rounded-sm bg-[#f7f8fa] p-3 text-sm sm:col-span-2">
-                <p><span className="block text-muted-foreground">In your books</span><span className="font-semibold tabular-nums">{book === null ? "…" : fmtIDR(book)}</span></p>
-                <p><span className="block text-muted-foreground">You counted</span><span className="font-semibold tabular-nums">{actualSen >= 0 ? fmtIDR(actualSen) : "—"}</span></p>
+                <p><span className="block text-muted-foreground">{t("rec.inBooks")}</span><span className="font-semibold tabular-nums">{book === null ? "…" : fmtIDR(book)}</span></p>
+                <p><span className="block text-muted-foreground">{t("rec.counted")}</span><span className="font-semibold tabular-nums">{actualSen >= 0 ? fmtIDR(actualSen) : "—"}</span></p>
                 <p>
-                  <span className="block text-muted-foreground">Difference</span>
+                  <span className="block text-muted-foreground">{t("rec.difference")}</span>
                   <span className={cn("font-semibold tabular-nums", diff !== null && diff < 0 && "text-destructive", diff !== null && diff > 0 && "text-emerald-700")}>
-                    {diff === null ? "—" : diff === 0 ? "Matches" : `${diff > 0 ? "+" : "−"} ${fmtIDR(Math.abs(diff))}`}
+                    {diff === null ? "—" : diff === 0 ? t("rec.matches") : `${diff > 0 ? "+" : "−"} ${fmtIDR(Math.abs(diff))}`}
                   </span>
                 </p>
               </div>
 
               <Field
                 name="actual"
-                label={mode === "cash" ? "Cash counted (Rp)" : "Statement balance (Rp)"}
+                label={mode === "cash" ? t("rec.cashCounted") : t("rec.statement")}
                 placeholder="540.000"
                 inputMode="decimal"
                 value={actual}
@@ -137,14 +140,14 @@ export function ReconcilePage() {
                 error={err.fields?.actual}
               />
               {mode === "bank" && (
-                <SelectField name="counter_account_id" label="Post difference to" value={counterId} onChange={setCounterId}
-                  options={accountOptions(counters)} placeholder="Choose…" error={err.fields?.counter_account_id} />
+                <SelectField name="counter_account_id" label={t("rec.postTo")} value={counterId} onChange={setCounterId}
+                  options={accountOptions(counters)} placeholder={t("common.choose")} error={err.fields?.counter_account_id} />
               )}
 
               <div className="sm:col-span-2">
                 <Button type="submit" disabled={busy || diff === null} className="h-10 w-full rounded-sm px-8 md:w-auto">
                   {busy && <Loader2 className="animate-spin" />}
-                  {diff === 0 ? "Confirm match" : "Post difference"}
+                  {diff === 0 ? t("rec.confirm") : t("rec.postDiff")}
                 </Button>
               </div>
             </form>
