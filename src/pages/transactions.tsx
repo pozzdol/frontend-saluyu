@@ -173,7 +173,12 @@ const kindOptions = () => [{ value: "", label: t("tx.allTypes") }, ...kinds8.map
 function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQuery) => void; accounts: Account[] }) {
   const mobile = useIsMobile()
   const [open, setOpen] = useState(false)
-  const active = [q.q, q.kind, q.account_id, q.from, q.to].filter(Boolean).length
+  const active = [q.q, q.kind, q.account_id, q.from, q.to, q.amount_min, q.amount_max].filter(Boolean).length
+  // "75.000" in either box: an empty box means no bound; an unreadable one is ignored.
+  const amount = (v: string) => {
+    const sen = toSen(v)
+    return v.trim() && sen >= 0 ? sen : undefined
+  }
   const t = useT()
   const accountOpts = [{ value: "", label: t("tx.allAccounts") }, ...accountOptions(accounts)]
 
@@ -189,6 +194,10 @@ function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQue
       />
       <SelectPicker aria-label={t("tx.type")} title={t("tx.type")} value={q.kind ?? ""} options={kindOptions()} onChange={(v) => set({ kind: v })} className="bg-white md:h-9 md:w-40" />
       <SelectPicker aria-label={t("tx.allAccounts")} title={t("tx.allAccounts")} value={q.account_id ?? ""} options={accountOpts} onChange={(v) => set({ account_id: v })} className="bg-white md:h-9 md:w-52" />
+      <Input inputMode="decimal" placeholder={t("tx.amountMin")} aria-label={t("tx.amountMin")} defaultValue={q.amount_min ? String(q.amount_min / 100) : ""}
+        className="h-11 rounded-sm bg-white md:h-9 md:w-32" onChange={(e) => set({ amount_min: amount((e.target as HTMLInputElement).value) })} />
+      <Input inputMode="decimal" placeholder={t("tx.amountMax")} aria-label={t("tx.amountMax")} defaultValue={q.amount_max ? String(q.amount_max / 100) : ""}
+        className="h-11 rounded-sm bg-white md:h-9 md:w-32" onChange={(e) => set({ amount_max: amount((e.target as HTMLInputElement).value) })} />
       <DatePicker aria-label={t("tx.fromDate")} title={t("tx.fromDate")} placeholder={t("tx.from")} clearable value={q.from ?? ""} onChange={(v) => set({ from: v })} className="bg-white md:h-9 md:w-40" />
       <DatePicker aria-label={t("tx.toDate")} title={t("tx.toDate")} placeholder={t("tx.to")} clearable value={q.to ?? ""} onChange={(v) => set({ to: v })} className="bg-white md:h-9 md:w-40" />
     </>
@@ -207,7 +216,7 @@ function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQue
           {controls}
           <Button className="rounded-sm" onClick={() => setOpen(false)}>{t("common.showResults")}</Button>
           {active > 0 && (
-            <Button variant="ghost" onClick={() => (set({ q: "", kind: "", account_id: "", from: "", to: "" }), setOpen(false))}>{t("common.clearFilters")}</Button>
+            <Button variant="ghost" onClick={() => (set({ q: "", kind: "", account_id: "", from: "", to: "", amount_min: undefined, amount_max: undefined }), setOpen(false))}>{t("common.clearFilters")}</Button>
           )}
         </div>
       </SheetContent>

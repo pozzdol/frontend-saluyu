@@ -293,7 +293,7 @@ export type PostEntryInput = {
 export const postEntry = (body: PostEntryInput) =>
   authed<{ data: Entry }>("/entries", json("POST", body)).then((r) => (entriesChanged(), r.data))
 
-export type EntryQuery = { from?: string; to?: string; kind?: string; account_id?: string; q?: string; page?: number; limit?: number }
+export type EntryQuery = { from?: string; to?: string; kind?: string; account_id?: string; q?: string; amount_min?: number; amount_max?: number; page?: number; limit?: number }
 
 export const listEntries = (params: EntryQuery) =>
   authed<{ data: Entry[]; total: number; page: number; limit: number }>(`/entries${query(params)}`)
@@ -391,7 +391,7 @@ export const reconcile = (body: ReconcileInput) =>
 // ---- Periods, budgets & reports (phase 3) ----
 
 export type Period = { start: string; end: string; next: string; prev: string; label: string }
-export type AmountRow = { account_id: string; code: string; name: string; amount: number }
+export type AmountRow = { account_id: string; code: string; name: string; amount: number; prev?: number; avg3?: number }
 export type BudgetRow = { account_id: string; name: string; budget: number; actual: number; remaining: number; over: boolean; inherited: boolean }
 export type BalanceRow = { account_id: string; code: string; name: string; category: string; balance: number }
 
@@ -416,6 +416,8 @@ export type IncomeStatement = {
   expense: AmountRow[]
   expense_total: number
   net_income: number
+  revenue_compare?: [number, number] // previous period, average of the three before
+  expense_compare?: [number, number]
 }
 
 export type BalanceSheet = {
@@ -437,8 +439,8 @@ export const getBudgets = (date: string) => authed<{ data: BudgetList }>(`/budge
 export const putBudget = (accountId: string, body: { date: string; amount: number }) =>
   authed<{ data: BudgetRow }>(`/budgets/${accountId}`, json("PUT", body)).then((r) => r.data)
 
-export const getIncomeStatement = (date: string) =>
-  authed<{ data: IncomeStatement }>(`/reports/income-statement${query({ date })}`).then((r) => r.data)
+export const getIncomeStatement = (date: string, compare = false) =>
+  authed<{ data: IncomeStatement }>(`/reports/income-statement${query({ date, ...(compare && { compare: "1" }) })}`).then((r) => r.data)
 
 export const getBalanceSheet = (date: string) =>
   authed<{ data: BalanceSheet }>(`/reports/balance-sheet${query({ date })}`).then((r) => r.data)
@@ -738,3 +740,72 @@ export const commitImport = (body: {
   rows: { hash: string; date: string; description: string; amount: number; account_id?: string; match_entry_id?: string }[]
   remember?: Omit<CategoryRule, "id">[]
 }) => authed<{ data: { posted: number; matched: number; skipped: number } }>("/imports/commit", json("POST", body)).then((r) => (entriesChanged(), r.data))
+
+// ---- Insights and full reports (phase 10) ----
+
+export type Insight = { kind: "category_up" | "category_down" | "savings_up" | "savings_down"; account_id?: string; name?: string; amount: number; percent: number }
+export type Insights = {
+  period: Period
+  safe_per_day: { amount: number; remaining: number; days_left: number; basis: "budget" | "surplus" }
+  by_category: AmountRow[]
+  expense_total: number
+  daily: { date: string; income: number; expense: number }[]
+  insights: Insight[]
+  budget_alerts: { account_id: string; name: string; budget: number; actual: number; level: "warn" | "over" }[]
+}
+export type TrendPoint = { period: Period; income: number; expense: number; net_worth: number; by_category: AmountRow[] }
+export type Ratio = { value: number; good: number; warn: number; status: "good" | "warn" | "bad" | "none"; lower_is_ok: boolean }
+export type Health = {
+  emergency_months: Ratio
+  debt_ratio: Ratio
+  savings_3: Ratio
+  savings_6: Ratio
+  savings_12: Ratio
+  cash: number
+  avg_expense: number
+  avg_income: number
+  avg_debt_payments: number
+  periods: number
+}
+export type CashFlowSection = { rows: AmountRow[]; total: number }
+export type CashFlow = {
+  period: Period
+  beginning: number
+  operating: CashFlowSection
+  investing: CashFlowSection
+  financing: CashFlowSection
+  opening: number
+  net: number
+  ending: number
+}
+export type TaxSummary = {
+  year: number
+  as_of: string
+  assets: AmountRow[]
+  assets_total: number
+  liabilities: AmountRow[]
+  liabilities_total: number
+  income: AmountRow[]
+  income_total: number
+}
+
+export const getInsights = (date: string) => authed<{ data: Insights }>(`/insights${query({ date })}`).then((r) => r.data)
+export const getTrends = (date: string, periods = 12) => authed<{ data: TrendPoint[] }>(`/trends${query({ date, periods: String(periods) })}`).then((r) => r.data)
+export const getHealth = (date: string) => authed<{ data: Health }>(`/health${query({ date })}`).then((r) => r.data)
+export const getCashFlow = (date: string) => authed<{ data: CashFlow }>(`/reports/cash-flow${query({ date })}`).then((r) => r.data)
+export const getTaxSummary = (year: number) => authed<{ data: TaxSummary }>(`/reports/tax-summary${query({ year: String(year) })}`).then((r) => r.data)
+
+// downloadReport saves one report as an Excel file (the bearer token rules out a plain link).
+export async function downloadReport(report: "income" | "balance" | "cashflow" | "journal", date: string) {
+  const go = () => fetch(`/api/v1/reports/export.xlsx${query({ report, date })}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
+  let res = await go()
+  if (res.status === 401 && (await refresh())) res = await go()
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body.error ?? res.statusText, undefined, body.code)
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? `${report}.xlsx`
+  const url = URL.createObjectURL(await res.blob())
+  Object.assign(document.createElement("a"), { href: url, download: name }).click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

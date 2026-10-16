@@ -1,93 +1,149 @@
-import { CheckCircle2, XCircle } from "lucide-react"
+import { CheckCircle2, FileSpreadsheet, Loader2, Printer, XCircle } from "lucide-react"
+import type { ComponentChildren } from "preact"
+import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
-import { Badge } from "@/components/ui/badge"
-import { getBalanceSheet, getIncomeStatement, type AmountRow, type BalanceSheet, type IncomeStatement } from "@/lib/api"
-import { fmtIDR } from "@/lib/utils"
-import { useLocation } from "preact-iso"
-import { DatePicker, fmtDate } from "@/components/picker"
+import { DatePicker, SelectPicker, fmtDate } from "@/components/picker"
 import { Segmented } from "@/components/segmented"
-import type { ComponentChildren } from "preact"
 import { Term, type TermKey } from "@/components/term"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  downloadReport,
+  getBalanceSheet,
+  getCashFlow,
+  getIncomeStatement,
+  getTaxSummary,
+  type AmountRow,
+  type BalanceSheet,
+  type CashFlow,
+  type IncomeStatement,
+  type TaxSummary,
+} from "@/lib/api"
 import { t, useT } from "@/lib/i18n"
+import { cn, fmtIDR } from "@/lib/utils"
 
-const views = { pl: "report.pl", bs: "report.bs" } as const
+const views = { pl: "report.pl", bs: "report.bs", cf: "report.cf", tax: "report.tax" } as const
+type View = keyof typeof views
+const viewTerm: Record<View, TermKey> = { pl: "incomeStatement", bs: "balanceSheet", cf: "cashFlow", tax: "asset" }
 
-// Section: a heading row, its accounts, then a total row.
-function Section({ title, term, rows, total }: { title: string; term: TermKey; rows: AmountRow[]; total: number }) {
+const money = (v: number) => <td className="text-right whitespace-nowrap">{fmtIDR(v)}</td>
+
+// Section: a heading row, its accounts, then a total row. With compare, two more columns:
+// the previous period and the average of the three before.
+function Section({ title, term, rows, total, compare, totalLabel }: { title: string; term?: TermKey; rows: AmountRow[]; total: number; compare?: [number, number]; totalLabel?: string }) {
+  const cols = compare ? 4 : 2
   return (
     <>
-      <tr className="bg-[#f7f8fa] font-medium"><td colSpan={2}><Term k={term}>{title}</Term></td></tr>
+      <tr className="bg-[#f7f8fa] font-medium"><td colSpan={cols}>{term ? <Term k={term}>{title}</Term> : title}</td></tr>
       {rows.map((r) => (
         <tr key={r.account_id}>
           <td className="pl-8!">{r.code} · {r.name}</td>
-          <td className="text-right whitespace-nowrap">{fmtIDR(r.amount)}</td>
+          {money(r.amount)}
+          {compare && <>{money(r.prev ?? 0)}{money(r.avg3 ?? 0)}</>}
         </tr>
       ))}
-      <tr className="font-semibold"><td>{t("report.totalOf", { name: title.toLowerCase() })}</td><td className="text-right whitespace-nowrap">{fmtIDR(total)}</td></tr>
+      <tr className="font-semibold">
+        <td>{totalLabel ?? t("report.totalOf", { name: title.toLowerCase() })}</td>
+        {money(total)}
+        {compare && <>{money(compare[0])}{money(compare[1])}</>}
+      </tr>
     </>
   )
 }
 
-function Total({ label, value }: { label: ComponentChildren; value: number }) {
+function Total({ label, value, more }: { label: ComponentChildren; value: number; more?: number[] }) {
   return (
-    <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td><td className="text-right whitespace-nowrap">{fmtIDR(value)}</td></tr>
+    <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td>{money(value)}{more?.map((v, i) => <td key={i} className="text-right whitespace-nowrap">{fmtIDR(v)}</td>)}</tr>
   )
 }
 
 export function ReportsPage() {
   const t = useT()
   const { query, route, path } = useLocation()
-  const view = query.view === "bs" ? "bs" : "pl"
+  const view: View = (query.view as View) in views ? (query.view as View) : "pl"
   const [date, setDate] = usePeriodDate()
+  const [year, setYear] = useState(new Date().getFullYear() - 1)
   const [pl, setPl] = useState<IncomeStatement | null>(null)
   const [bs, setBs] = useState<BalanceSheet | null>(null)
+  const [cf, setCf] = useState<CashFlow | null>(null)
+  const [tax, setTax] = useState<TaxSummary | null>(null)
   const [err, setErr] = useState<FormError>({})
+  const [busy, setBusy] = useState(false)
 
-  // Both reports load together, so switching tabs never shows an empty page while fetching.
-  // The old numbers stay on screen until the new ones arrive.
+  // The period reports load together, so switching tabs never shows an empty page while
+  // fetching. The old numbers stay on screen until the new ones arrive.
   useEffect(() => {
-    Promise.all([getIncomeStatement(date).then(setPl), getBalanceSheet(date).then(setBs)])
+    Promise.all([getIncomeStatement(date, true).then(setPl), getBalanceSheet(date).then(setBs), getCashFlow(date).then(setCf)])
       .then(() => setErr({}))
       .catch((e) => setErr(toFormError(e)))
   }, [date])
+  useEffect(() => {
+    if (view === "tax") getTaxSummary(year).then(setTax, (e) => setErr(toFormError(e)))
+  }, [view, year])
+
+  async function excel() {
+    setBusy(true)
+    try {
+      await downloadReport(({ pl: "income", bs: "balance", cf: "cashflow", tax: "balance" } as const)[view], view === "tax" ? `${year}-12-31` : date)
+    } catch (e) {
+      setErr(toFormError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const thisYear = new Date().getFullYear()
+  const picker =
+    view === "bs" ? (
+      // Same height as PeriodPicker so the header does not jump between tabs.
+      <DatePicker aria-label={t("report.asOfLabel")} title={t("report.asOfLabel")} value={bs?.as_of ?? date}
+        display={t("picker.asOf", { date: fmtDate(bs?.as_of ?? date) })} onChange={(d) => d && setDate(d)}
+        className="w-full justify-center bg-white font-medium md:h-9 md:w-64" />
+    ) : view === "tax" ? (
+      <SelectPicker aria-label={t("report.year")} title={t("report.year")} value={String(year)} onChange={(v) => setYear(Number(v))}
+        options={Array.from({ length: 6 }, (_, i) => ({ value: String(thisYear - i), label: String(thisYear - i) }))} className="bg-white md:h-9 md:w-40" />
+    ) : (
+      <PeriodPicker period={(view === "pl" ? pl : cf)?.period} onChange={setDate} />
+    )
 
   return (
-    <AppShell
-      title={t("report.title")}
-      actions={
-        view === "pl" ? (
-          <PeriodPicker period={pl?.period} onChange={setDate} />
-        ) : (
-          // Same height as PeriodPicker so the header does not jump between tabs.
-          <DatePicker
-            aria-label={t("report.asOfLabel")}
-            title={t("report.asOfLabel")}
-            value={bs?.as_of ?? date}
-            display={t("picker.asOf", { date: fmtDate(bs?.as_of ?? date) })}
-            onChange={(d) => d && setDate(d)}
-            className="w-full justify-center bg-white font-medium md:h-9 md:w-64"
-          />
-        )
-      }
-    >
+    <AppShell title={t("report.title")} actions={<div className="print:hidden">{picker}</div>}>
       <div className="grid gap-4">
-        <Segmented
-          label={t("report.tabs")}
-          value={view}
-          onChange={(k) => route(`${path}?${new URLSearchParams({ ...query, view: k })}`, true)}
-          items={(Object.keys(views) as (keyof typeof views)[]).map((k) => ({ value: k, label: <Term k={k === "pl" ? "incomeStatement" : "balanceSheet"}>{t(views[k])}</Term> }))}
-        />
+        <div className="print:hidden">
+          <Segmented label={t("report.tabs")} value={view}
+            onChange={(k) => route(`${path}?${new URLSearchParams({ ...query, view: k })}`, true)}
+            items={(Object.keys(views) as View[]).map((k) => ({ value: k, label: k === "tax" ? t(views[k]) : <Term k={viewTerm[k]}>{t(views[k])}</Term> }))} />
+        </div>
+        <div className="flex flex-wrap gap-2 print:hidden">
+          <Button variant="outline" size="sm" className="rounded-sm" disabled={busy} onClick={excel}>
+            {busy ? <Loader2 className="animate-spin" /> : <FileSpreadsheet />} Excel
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={() => window.print()}><Printer /> {t("report.print")}</Button>
+          {view !== "tax" && (
+            <Button variant="ghost" size="sm" className="rounded-sm" disabled={busy}
+              onClick={() => downloadReport("journal", date).catch((e) => setErr(toFormError(e)))}>
+              <FileSpreadsheet /> {t("report.journalExcel")}
+            </Button>
+          )}
+        </div>
         <Status err={err} ok="" />
+        <h2 className="hidden text-lg font-semibold print:block">
+          {t(views[view])} · {view === "pl" ? pl?.period.label : view === "cf" ? cf?.period.label : view === "bs" ? fmtDate(bs?.as_of ?? date) : year}
+        </h2>
 
         {view === "pl" && pl && (
           <TableCard>
+            {pl.expense_compare && (
+              <thead><tr><th /><th className="text-right!">{t("report.thisPeriod")}</th><th className="text-right!">{t("report.lastPeriod")}</th><th className="text-right!">{t("report.avg3")}</th></tr></thead>
+            )}
             <tbody className="tabular-nums">
-              <Section title={t("report.revenue")} term="revenue" rows={pl.revenue} total={pl.revenue_total} />
-              <Section title={t("report.expense")} term="expense" rows={pl.expense} total={pl.expense_total} />
-              <Total label={<Term k="surplus">{t("report.netIncome")}</Term>} value={pl.net_income} />
+              <Section title={t("report.revenue")} term="revenue" rows={pl.revenue} total={pl.revenue_total} compare={pl.revenue_compare} />
+              <Section title={t("report.expense")} term="expense" rows={pl.expense} total={pl.expense_total} compare={pl.expense_compare} />
+              <Total label={<Term k="surplus">{t("report.netIncome")}</Term>} value={pl.net_income}
+                more={pl.revenue_compare && pl.expense_compare ? [pl.revenue_compare[0] - pl.expense_compare[0], pl.revenue_compare[1] - pl.expense_compare[1]] : undefined} />
             </tbody>
           </TableCard>
         )}
@@ -106,8 +162,36 @@ export function ReportsPage() {
                 <Section title={t("report.assets")} term="asset" rows={bs.assets} total={bs.assets_total} />
                 <Section title={t("report.liabilities")} term="liability" rows={bs.liabilities} total={bs.liabilities_total} />
                 <Section title={t("report.equity")} term="equity" rows={bs.equity} total={bs.equity_total} />
-                <tr><td className="pl-8!"><Term k="currentEarnings">{t("report.currentEarnings")}</Term></td><td className="text-right whitespace-nowrap">{fmtIDR(bs.current_earnings)}</td></tr>
+                <tr><td className="pl-8!"><Term k="currentEarnings">{t("report.currentEarnings")}</Term></td>{money(bs.current_earnings)}</tr>
                 <Total label={t("report.check")} value={bs.liabilities_total + bs.equity_total + bs.current_earnings} />
+              </tbody>
+            </TableCard>
+          </>
+        )}
+
+        {view === "cf" && cf && (
+          <TableCard>
+            <tbody className="tabular-nums">
+              <tr className="font-medium"><td>{t("report.cashBegin", { date: fmtDate(cf.period.start) })}</td>{money(cf.beginning)}</tr>
+              <Section title={t("report.operating")} rows={cf.operating.rows} total={cf.operating.total} />
+              <Section title={t("report.investing")} rows={cf.investing.rows} total={cf.investing.total} />
+              <Section title={t("report.financing")} rows={cf.financing.rows} total={cf.financing.total} />
+              {cf.opening !== 0 && <tr><td>{t("report.openingEntered")}</td>{money(cf.opening)}</tr>}
+              <tr className="font-semibold"><td>{t("report.netCash")}</td>{money(cf.net)}</tr>
+              <Total label={t("report.cashEnd", { date: fmtDate(cf.period.end) })} value={cf.ending} />
+            </tbody>
+          </TableCard>
+        )}
+        {view === "cf" && <p className="text-xs text-muted-foreground">{t("report.cashNote")}</p>}
+
+        {view === "tax" && tax && (
+          <>
+            <p className={cn("rounded-sm bg-amber-50 p-3 text-sm text-amber-900")}>{t("report.taxNote")}</p>
+            <TableCard>
+              <tbody className="tabular-nums">
+                <Section totalLabel={t("common.total")} title={t("report.taxIncome", { year: tax.year })} rows={tax.income} total={tax.income_total} />
+                <Section totalLabel={t("common.total")} title={t("report.taxAssets", { date: fmtDate(tax.as_of) })} rows={tax.assets} total={tax.assets_total} />
+                <Section totalLabel={t("common.total")} title={t("report.taxDebts", { date: fmtDate(tax.as_of) })} rows={tax.liabilities} total={tax.liabilities_total} />
               </tbody>
             </TableCard>
           </>

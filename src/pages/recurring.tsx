@@ -81,7 +81,7 @@ function DueItem({ d, onDone }: { d: DueOccurrence; onDone: () => void }) {
       <Status err={err} ok="" />
       <div className="flex gap-2">
         <Input inputMode="decimal" aria-label={t("rcr.amountFor", { name: d.rule.name })} value={amount}
-          onInput={(e) => setAmount(e.currentTarget.value)} className="h-11 min-w-0 flex-1 rounded-sm text-right tabular-nums md:h-9" />
+          onInput={(e) => setAmount(e.currentTarget.value)} className="h-11 min-w-0 flex-1 rounded-sm text-right tabular-nums md:h-9 md:max-w-48" />
         <Button className="h-11 rounded-sm md:h-9" disabled={busy} onClick={() => act(true)}>
           {busy ? <Loader2 className="animate-spin" /> : <Check />} {t("rcr.record")}
         </Button>

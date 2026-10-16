@@ -199,7 +199,7 @@ export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {
     <>
       {variant === "fab" ? (
         <button type="button" aria-label={t("qa.title")} onClick={() => setOpen(true)}
-          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 lg:hidden">
+          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 lg:hidden print:hidden">
           <Plus className="size-6" />
         </button>
       ) : (

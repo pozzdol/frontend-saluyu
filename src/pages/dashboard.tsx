@@ -10,6 +10,7 @@ import { useT } from "@/lib/i18n"
 import type { ComponentChildren } from "preact"
 import { DueBills } from "@/pages/cards"
 import { DueList } from "@/pages/recurring"
+import { InsightsTop, TrendsAndHealth } from "@/pages/insights"
 
 function Tile({ label, value, note, tone }: { label: ComponentChildren; value: string; note?: string; tone?: string }) {
   return (
@@ -27,6 +28,7 @@ function Tile({ label, value, note, tone }: { label: ComponentChildren; value: s
 export function BudgetBar({ row }: { row: BudgetRow }) {
   const t = useT()
   const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0
+  const near = !row.over && pct >= 80
   return (
     <li className="grid gap-1">
       <div className="flex flex-wrap justify-between gap-x-3 text-sm">
@@ -34,8 +36,9 @@ export function BudgetBar({ row }: { row: BudgetRow }) {
         <span className="tabular-nums text-muted-foreground">
           {row.budget > 0 ? t("dash.ofBudget", { actual: fmtIDR(row.actual), budget: fmtIDR(row.budget) }) : t("dash.spentNoBudget", { actual: fmtIDR(row.actual) })}
           {row.budget > 0 && (
-            <span className={cn("ml-2 font-medium", row.over ? "text-rose-700" : "text-emerald-700")}>
+            <span className={cn("ml-2 font-medium", row.over ? "text-rose-700" : near ? "text-amber-800" : "text-emerald-700")}>
               {row.over ? t("dash.overBy", { amount: fmtIDR(-row.remaining) }) : t("dash.left", { amount: fmtIDR(row.remaining) })}
+              {near && ` · ${t("dash.nearlyUsed")}`}
             </span>
           )}
         </span>
@@ -48,7 +51,7 @@ export function BudgetBar({ row }: { row: BudgetRow }) {
         aria-valuemax={100}
         className="h-2 overflow-hidden rounded-sm bg-[#e6ebf5]"
       >
-        <div className={cn("h-full", row.over ? "bg-rose-600" : "bg-primary")} style={{ width: `${pct}%` }} />
+        <div className={cn("h-full", row.over ? "bg-rose-600" : near ? "bg-amber-500" : "bg-primary")} style={{ width: `${pct}%` }} />
       </div>
     </li>
   )
@@ -71,6 +74,7 @@ export function DashboardPage() {
         <Status err={err} ok="" />
         <DueBills />
         <DueList />
+        <InsightsTop date={date} />
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
@@ -129,6 +133,7 @@ export function DashboardPage() {
             </section>
           </>
         )}
+        <TrendsAndHealth date={date} />
       </div>
     </AppShell>
   )

@@ -75,8 +75,8 @@ export function AppShell({ title, term, actions, children }: {
   useEffect(() => setMenu(false), [path]) // close the drawer after navigating
 
   return (
-    <div className="min-h-svh bg-[#f7f8fa] lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-svh border-r bg-background lg:block">
+    <div className="min-h-svh bg-[#f7f8fa] lg:grid lg:grid-cols-[15rem_1fr] print:block print:bg-white">
+      <aside className="sticky top-0 hidden h-svh border-r bg-background lg:block print:hidden">
         <div className="flex h-14 items-center px-5">
           <Logo />
         </div>
@@ -89,7 +89,7 @@ export function AppShell({ title, term, actions, children }: {
         )}
       </aside>
 
-      <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-2 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
+      <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-2 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden print:hidden">
         <Sheet open={menu} onOpenChange={setMenu}>
           <SheetTrigger asChild>
             <button type="button" aria-label={inbox > 0 ? t("nav.menuWaiting", { n: inbox }) : t("nav.menu")} className="relative grid size-11 place-items-center rounded-sm hover:bg-muted">
@@ -137,7 +137,7 @@ function VerifyBanner({ email }: { email: string }) {
     setState(await resendVerification().then(() => "sent" as const, () => "failed" as const))
   }
   return (
-    <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:items-center lg:px-8">
+    <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:items-center lg:px-8 print:hidden">
       <MailWarning className="mt-0.5 size-4 shrink-0 lg:mt-0" />
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
       <span className="mr-auto">{t("verify.banner", { email })}</span>

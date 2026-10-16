@@ -30,7 +30,7 @@ export function Toaster() {
   }, [item?.id])
 
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[60] flex justify-center px-4 max-md:bottom-24">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[60] flex justify-center px-4 max-md:bottom-24 print:hidden">
       {item && (
         <div role={item.tone === "error" ? "alert" : "status"}
           className={cn("pointer-events-auto flex min-h-12 w-full max-w-md items-center gap-2 rounded-sm py-1 pr-1 pl-4 text-sm text-white shadow-lg",
