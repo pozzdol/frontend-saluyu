@@ -1,53 +1,12 @@
-import { AlertCircle, CheckCircle2, KeyRound, Loader2, LogOut, UserRound } from "lucide-react"
+import { KeyRound, Loader2, LogOut, UserRound } from "lucide-react"
 import { useState } from "preact/hooks"
-import { Field, formValues, toFormError, type FormError } from "@/components/field"
+import { Field, Status, useForm } from "@/components/field"
 import { SiteHeader } from "@/components/site"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { changePassword, logout, updateProfile, type User } from "@/lib/api"
-
-// useForm runs one submit at a time and keeps its error or success message.
-function useForm(submit: (v: Record<string, string>, form: HTMLFormElement) => Promise<string>) {
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<FormError>({})
-  const [ok, setOk] = useState("")
-
-  async function onSubmit(e: SubmitEvent) {
-    const v = formValues(e)
-    setBusy(true)
-    setErr({})
-    setOk("")
-    try {
-      setOk(await submit(v, e.currentTarget as HTMLFormElement))
-    } catch (e) {
-      setErr(toFormError(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return { busy, err, ok, onSubmit }
-}
-
-function Status({ err, ok }: { err: FormError; ok: string }) {
-  if (err.message)
-    return (
-      <Alert variant="destructive" className="rounded-sm">
-        <AlertCircle />
-        <AlertDescription>{err.message}</AlertDescription>
-      </Alert>
-    )
-  if (ok)
-    return (
-      <Alert className="rounded-sm border-emerald-200 bg-emerald-50 text-emerald-700">
-        <CheckCircle2 />
-        <AlertDescription className="text-emerald-700">{ok}</AlertDescription>
-      </Alert>
-    )
-  return null
-}
 
 const initials = (name: string) =>
   name

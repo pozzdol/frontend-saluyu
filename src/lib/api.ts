@@ -121,3 +121,105 @@ export async function changePassword(body: { old_password: string; new_password:
   const res = await authed<{ access_token: string }>("/me/password", json("PUT", body))
   accessToken = res.access_token
 }
+
+// ---- Ledger (phase 1) ----
+
+export type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense"
+
+export type Account = {
+  id: string
+  code: string
+  name: string
+  type: AccountType
+  category: string
+  normal_balance: "Debit" | "Credit"
+  is_active: boolean
+}
+
+export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment"
+
+export type Line = { account_id: string; code: string; name: string; debit: number; credit: number }
+
+export type Entry = {
+  id: string
+  entry_no: number
+  entry_date: string
+  kind: EntryKind
+  description: string
+  created_at: string
+  lines: Line[]
+}
+
+export type LedgerRow = {
+  entry_id: string
+  entry_no: number
+  entry_date: string
+  kind: EntryKind
+  description: string
+  counter: string
+  debit: number
+  credit: number
+  balance: number
+}
+
+export type Ledger = { account: Account; opening: number; rows: LedgerRow[]; closing: number }
+
+export type TrialBalanceRow = {
+  account_id: string
+  code: string
+  name: string
+  type: AccountType
+  debit: number
+  credit: number
+  debit_balance: number
+  credit_balance: number
+}
+
+export type TrialBalance = {
+  as_of: string
+  rows: TrialBalanceRow[]
+  total_debit: number
+  total_credit: number
+  balanced: boolean
+}
+
+// query builds "?a=1&b=2" from the non-empty values only.
+function query(params: Record<string, string | number | undefined>) {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") q.set(k, String(v))
+  const s = q.toString()
+  return s ? `?${s}` : ""
+}
+
+export const listAccounts = () => authed<{ data: Account[] }>("/accounts").then((r) => r.data)
+
+export const createAccount = (body: { code: string; name: string; type: AccountType; category: string }) =>
+  authed<{ data: Account }>("/accounts", json("POST", body)).then((r) => r.data)
+
+export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean }) =>
+  authed<{ data: Account }>(`/accounts/${id}`, json("PATCH", body)).then((r) => r.data)
+
+export type PostEntryInput = {
+  kind: "income" | "expense" | "transfer"
+  entry_date: string
+  amount: number
+  from_account_id: string
+  to_account_id: string
+  description: string
+}
+
+export const postEntry = (body: PostEntryInput) =>
+  authed<{ data: Entry }>("/entries", json("POST", body)).then((r) => r.data)
+
+export type EntryQuery = { from?: string; to?: string; kind?: string; account_id?: string; q?: string; page?: number; limit?: number }
+
+export const listEntries = (params: EntryQuery) =>
+  authed<{ data: Entry[]; total: number; page: number; limit: number }>(`/entries${query(params)}`)
+
+export const deleteEntry = (id: string) => authed<void>(`/entries/${id}`, { method: "DELETE" })
+
+export const getLedger = (id: string, params: { from?: string; to?: string }) =>
+  authed<{ data: Ledger }>(`/accounts/${id}/ledger${query(params)}`).then((r) => r.data)
+
+export const getTrialBalance = (asOf: string) =>
+  authed<{ data: TrialBalance }>(`/reports/trial-balance${query({ as_of: asOf })}`).then((r) => r.data)

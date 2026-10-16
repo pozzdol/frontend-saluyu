@@ -1,17 +1,31 @@
+import type { ComponentType } from "preact"
 import { LocationProvider, Route, Router, useLocation } from "preact-iso"
 import { useEffect } from "preact/hooks"
-import { useAuth } from "@/lib/api"
+import { useAuth, type User } from "@/lib/api"
 import { Landing } from "@/pages/landing"
 import { AuthPage } from "@/pages/auth"
 import { Account } from "@/pages/account"
+import { Transactions } from "@/pages/transactions"
+import { Accounts } from "@/pages/accounts"
+import { LedgerPage } from "@/pages/ledger"
+import { TrialBalancePage } from "@/pages/trial-balance"
 
-function Protected() {
-  const { user, ready } = useAuth()
+// protect renders a page only for a signed-in user and sends everyone else to /login.
+function protect<P>(Page: ComponentType<P & { user: User }>) {
+  return function Protected(props: P) {
+    const { user, ready } = useAuth()
+    const { route } = useLocation()
+    useEffect(() => {
+      if (ready && !user) route("/login", true)
+    }, [ready, user])
+    return user ? <Page {...props} user={user} /> : null
+  }
+}
+
+function Redirect({ to }: { to: string }) {
   const { route } = useLocation()
-  useEffect(() => {
-    if (ready && !user) route("/login", true)
-  }, [ready, user])
-  return user ? <Account user={user} /> : null
+  useEffect(() => route(to, true), [])
+  return null
 }
 
 function NotFound() {
@@ -26,6 +40,12 @@ function NotFound() {
   )
 }
 
+const AccountPage = protect(Account)
+const TransactionsPage = protect(Transactions)
+const AccountsPage = protect(Accounts)
+const Ledger = protect(({ params }: { params: { id: string } }) => <LedgerPage id={params.id} />)
+const TrialBalance = protect(TrialBalancePage)
+
 export function App() {
   return (
     <LocationProvider>
@@ -33,7 +53,12 @@ export function App() {
         <Route path="/" component={Landing} />
         <Route path="/login" component={() => <AuthPage mode="login" />} />
         <Route path="/register" component={() => <AuthPage mode="register" />} />
-        <Route path="/account" component={Protected} />
+        <Route path="/account" component={AccountPage} />
+        <Route path="/app" component={() => <Redirect to="/app/transactions" />} />
+        <Route path="/app/transactions" component={TransactionsPage} />
+        <Route path="/app/accounts" component={AccountsPage} />
+        <Route path="/app/accounts/:id" component={Ledger} />
+        <Route path="/app/trial-balance" component={TrialBalance} />
         <Route default component={NotFound} />
       </Router>
     </LocationProvider>
