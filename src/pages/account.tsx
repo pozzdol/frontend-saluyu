@@ -1,4 +1,4 @@
-import { KeyRound, Loader2, LogOut, UserRound } from "lucide-react"
+import { KeyRound, Loader2, LogOut, Shield, UserRound } from "lucide-react"
 import { useState } from "preact/hooks"
 import { Field, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Label } from "@/components/ui/label"
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { changePassword, logout, updateProfile, type User } from "@/lib/api"
 import { DayOfMonthPicker, SelectPicker } from "@/components/picker"
 import { useT } from "@/lib/i18n"
+import { Sessions, TwoFactor } from "@/components/security"
 
 const initials = (name: string) =>
   name
@@ -174,6 +175,13 @@ export function Account({ user }: { user: User }) {
                 {t("prof.changePw")}
               </Button>
             </form>
+            <div className="mt-6 grid gap-6 border-t pt-6">
+              <TwoFactor user={user} />
+              <Sessions />
+              <a href="/app/privacy" className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                <Shield className="size-4" /> {t("priv.open")}
+              </a>
+            </div>
           </CardContent>
         </Card>
       </div>

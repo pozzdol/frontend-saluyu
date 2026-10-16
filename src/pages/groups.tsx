@@ -341,6 +341,7 @@ export function GroupsPage({ user }: { user: User }) {
         </p>
 
         <Status err={err} ok="" />
+        {!user.email_verified && <p className="text-sm text-amber-800">{t("verify.groupsHint")}</p>}
 
         {waiting > 0 && inbox && (
           <section aria-labelledby="inbox-title" className="grid gap-3">

@@ -1,10 +1,10 @@
-import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Logo } from "@/components/site"
-import { useAuth, useInboxCount } from "@/lib/api"
+import { resendVerification, useAuth, useInboxCount } from "@/lib/api"
 import { Info, type TermKey } from "@/components/term"
 import { useT, type Key } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -105,6 +105,7 @@ export function AppShell({ title, term, actions, children }: {
       </div>
 
       <div className="min-w-0">
+        {user && !user.email_verified && <VerifyBanner email={user.email} />}
         <header className="bg-gradient-to-b from-[#eaf2ff] to-[#f7f8fa]">
           {/* Fixed-height title row, controls centred in it: the title sits at the same spot on every
               page whatever controls the page puts next to it (they wrap below it on phones). */}
@@ -120,6 +121,29 @@ export function AppShell({ title, term, actions, children }: {
       </div>
       <QuickAdd variant="fab" />
       <Toaster />
+    </div>
+  )
+}
+
+// VerifyBanner stays until the email is verified: invites to it are hidden until then.
+function VerifyBanner({ email }: { email: string }) {
+  const t = useT()
+  const [state, setState] = useState<"" | "busy" | "sent" | "failed">("")
+  async function resend() {
+    setState("busy")
+    setState(await resendVerification().then(() => "sent" as const, () => "failed" as const))
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:px-8">
+      <MailWarning className="size-4 shrink-0" />
+      <span className="mr-auto">{t("verify.banner", { email })}</span>
+      {state === "sent" ? (
+        <span role="status">{t("verify.sent")}</span>
+      ) : (
+        <button type="button" disabled={state === "busy"} onClick={resend} className="font-medium underline underline-offset-2 disabled:opacity-60">
+          {state === "failed" ? t("verify.retry") : t("verify.resend")}
+        </button>
+      )}
     </div>
   )
 }

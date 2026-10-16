@@ -9,6 +9,8 @@ export type User = {
   start_date: string | null // null until the opening balance is set
   locale: "id" | "en" | null // null = follow the browser
   period_start_day: number // 1..28, first day of the payday period
+  email_verified: boolean // group invites show only after verifying
+  totp_enabled: boolean
 }
 
 type Session = { access_token: string; user: User }
@@ -106,8 +108,60 @@ export async function register(body: { name: string; email: string; password: st
   await request("/register", json("POST", body))
 }
 
-export async function login(body: { email: string; password: string }) {
-  setSession(await request<Session>("/login", json("POST", body)))
+// login returns an mfa ticket when the account has 2FA; loginTOTP finishes with the code.
+export async function login(body: { email: string; password: string }): Promise<{ mfaToken?: string }> {
+  const res = await request<Session | { mfa_required: true; mfa_token: string }>("/login", json("POST", body))
+  if ("mfa_required" in res) return { mfaToken: res.mfa_token }
+  setSession(res)
+  return {}
+}
+
+export async function loginTOTP(body: { mfa_token: string; code: string }) {
+  setSession(await request<Session>("/login/totp", json("POST", body)))
+}
+
+export const forgotPassword = (email: string) => request<void>("/password/forgot", json("POST", { email }))
+export const resetPassword = (body: { token: string; new_password: string }) => request<void>("/password/reset", json("POST", body))
+export async function verifyEmail(token: string) {
+  await request<void>("/email/verify", json("POST", { token }))
+  if (state.user) setUser({ ...state.user, email_verified: true })
+}
+export const resendVerification = () => authed<void>("/me/email/verification", { method: "POST" })
+
+export type SessionInfo = { id: string; user_agent: string; started_at: string; last_active: string; current: boolean }
+export const listSessions = () => authed<{ data: SessionInfo[] }>("/auth/sessions").then((r) => r.data)
+export const endSession = (id: string) => authed<void>(`/auth/sessions/${id}`, { method: "DELETE" })
+// Older access tokens stop working, this tab included, so it switches to the new one.
+export async function revokeOtherSessions() {
+  const res = await authed<{ access_token: string }>("/auth/sessions/revoke-others", { method: "POST" })
+  accessToken = res.access_token
+}
+
+export const setupTOTP = () => authed<{ data: { secret: string; uri: string } }>("/me/totp/setup", { method: "POST" }).then((r) => r.data)
+export async function enableTOTP(code: string) {
+  const res = await authed<{ backup_codes: string[] }>("/me/totp/enable", json("POST", { code }))
+  if (state.user) setUser({ ...state.user, totp_enabled: true })
+  return res.backup_codes
+}
+export async function disableTOTP(body: { password: string; code: string }) {
+  await authed<void>("/me/totp/disable", json("POST", body))
+  if (state.user) setUser({ ...state.user, totp_enabled: false })
+}
+
+// downloadExport saves the ZIP of all data; the bearer token rules out a plain link.
+export async function downloadExport() {
+  const go = () => fetch("/api/v1/me/export", { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
+  let res = await go()
+  if (res.status === 401 && (await refresh())) res = await go()
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body.error ?? res.statusText, undefined, body.code)
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "saluyu.zip"
+  const url = URL.createObjectURL(await res.blob())
+  const a = Object.assign(document.createElement("a"), { href: url, download: name })
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export async function logout() {
@@ -212,7 +266,7 @@ function query(params: Record<string, string | number | undefined>) {
 
 export const listAccounts = () => authed<{ data: Account[] }>("/accounts").then((r) => r.data)
 
-export const createAccount = (body: { code: string; name: string; type: AccountType; category: string }) =>
+export const createAccount = (body: { code: string; name: string; type: AccountType; category: string; icon?: string; color?: string }) =>
   authed<{ data: Account }>("/accounts", json("POST", body)).then((r) => r.data)
 
 export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean; icon?: string; color?: string }) =>
