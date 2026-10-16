@@ -55,7 +55,7 @@ export function OpeningPage({ user }: { user: User }) {
     setErr({})
     try {
       await setOpening({ start_date: date, items: accounts.map((a) => ({ account_id: a.id, amount: sen(a.id) })) })
-      route("/app/transactions")
+      route("/app/dashboard")
     } catch (e) {
       setErr(e instanceof ApiError ? toFormError(e) : { message: "Cannot reach the server." })
     } finally {

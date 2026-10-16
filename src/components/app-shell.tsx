@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, Flag, Scale, ScanSearch, UserRound } from "lucide-react"
+import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, PiggyBank, Scale, ScanSearch, UserRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { Logo } from "@/components/site"
@@ -6,7 +6,10 @@ import { useAuth } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const nav = [
+  { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/app/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/app/budgets", label: "Budgets", icon: PiggyBank },
+  { href: "/app/reports", label: "Reports", icon: FileText },
   { href: "/app/accounts", label: "Accounts", icon: BookOpen },
   { href: "/app/reconcile", label: "Reconcile", icon: ScanSearch },
   { href: "/app/trial-balance", label: "Trial balance", icon: Scale },

@@ -15,7 +15,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (user) route("/app/transactions", true)
+    if (user) route("/app/dashboard", true)
   }, [user])
   useEffect(() => setErr({}), [mode])
 

@@ -19,9 +19,10 @@ const initials = (name: string) =>
 export function Account({ user }: { user: User }) {
   const profile = useForm(async (v) => {
     // Send only changed fields: the API treats a missing field as "leave as is".
-    const body: { name?: string; img_url?: string } = {}
+    const body: { name?: string; img_url?: string; period_start_day?: number } = {}
     if (v.name !== user.name) body.name = v.name
     if (v.img_url !== user.img_url) body.img_url = v.img_url
+    if (Number(v.period_start_day) !== user.period_start_day) body.period_start_day = Number(v.period_start_day)
     if (Object.keys(body).length === 0) return "Nothing to update."
     await updateProfile(body)
     return "Profile saved."
@@ -89,6 +90,19 @@ export function Account({ user }: { user: User }) {
                 defaultValue={user.img_url}
                 error={profile.err.fields?.img_url}
               />
+              <Field
+                name="period_start_day"
+                label="Payday (period start day)"
+                type="number"
+                min={1}
+                max={28}
+                inputMode="numeric"
+                defaultValue={String(user.period_start_day)}
+                error={profile.err.fields?.period_start_day}
+              />
+              <p className="-mt-2 text-xs text-muted-foreground">
+                Day 1 to 28 when your month starts. Changing this re-slices past periods too.
+              </p>
               <Field name="email" label="Email (cannot be changed)" defaultValue={user.email} type="email" disabled />
               <Button type="submit" disabled={profile.busy} className="h-10 rounded-sm">
                 {profile.busy && <Loader2 className="animate-spin" />}

@@ -17,8 +17,12 @@ import {
   type Entry,
   type EntryQuery,
   type PostEntryInput,
+  type User,
 } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
+
+// daysBetween counts whole days from date a to date b (YYYY-MM-DD), DST-safe via UTC.
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5)
 
 type FormKind = PostEntryInput["kind"]
 
@@ -40,7 +44,7 @@ export const kindBadge: Record<string, string> = {
 
 const label = (a: Account) => `${a.code} · ${a.name}`
 
-function EntryForm({ accounts, onPosted }: { accounts: Account[]; onPosted: () => void }) {
+function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
   const [kind, setKind] = useState<FormKind>("expense")
   const rule = kinds[kind]
   const active = accounts.filter((a) => a.is_active)
@@ -48,6 +52,17 @@ function EntryForm({ accounts, onPosted }: { accounts: Account[]; onPosted: () =
   const toOptions = active.filter((a) => a.type === rule.to)
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  const [date, setDate] = useState(todayISO())
+  const [nextPeriod, setNextPeriod] = useState(false)
+
+  // Salary often lands a few days before the period starts; offer to count it in the coming one.
+  const nextStart = (() => {
+    const [y, m, d] = date.split("-").map(Number)
+    if (!y) return ""
+    return new Date(Date.UTC(y, d < startDay ? m - 1 : m, startDay)).toISOString().slice(0, 10)
+  })()
+  const early = nextStart !== "" && daysBetween(date, nextStart) <= 3
+  const showNext = kind === "income" && early
 
   // Reset the selection when the kind changes, defaulting to the first sensible account.
   useEffect(() => {
@@ -58,10 +73,11 @@ function EntryForm({ accounts, onPosted }: { accounts: Account[]; onPosted: () =
   const form = useForm(async (v, el) => {
     const amount = toSen(v.amount)
     if (!(amount > 0)) throw new ApiError(400, "validation failed", { amount: "must be a positive amount" })
-    await postEntry({ kind, entry_date: v.entry_date, amount, from_account_id: from, to_account_id: to, description: v.description })
+    await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }) })
     // Keep date and accounts for the next entry: people usually log several in a row.
     ;(el.elements.namedItem("amount") as HTMLInputElement).value = ""
     ;(el.elements.namedItem("description") as HTMLInputElement).value = ""
+    setNextPeriod(false)
     onPosted()
     return `${rule.label} saved.`
   })
@@ -96,7 +112,7 @@ function EntryForm({ accounts, onPosted }: { accounts: Account[]; onPosted: () =
           <div className="md:col-span-6">
             <Status err={err} ok={form.ok} />
           </div>
-          <Field name="entry_date" label="Date" type="date" defaultValue={todayISO()} error={err.fields?.entry_date} />
+          <Field name="entry_date" label="Date" type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value)} error={err.fields?.entry_date} />
           <div className="md:col-span-2">
             <Field name="amount" label="Amount (Rp)" placeholder="25.000" error={err.fields?.amount} />
           </div>
@@ -113,6 +129,12 @@ function EntryForm({ accounts, onPosted }: { accounts: Account[]; onPosted: () =
           <div className="md:col-span-3">
             <Field name="description" label="Note" placeholder={kind === "income" ? "Gaji September" : "Makan siang"} error={err.fields?.description} />
           </div>
+          {showNext && (
+            <label className="flex items-center gap-2 text-sm md:col-span-6">
+              <input type="checkbox" checked={nextPeriod} onChange={(e) => setNextPeriod((e.target as HTMLInputElement).checked)} className="accent-primary" />
+              Count toward next period (starts {nextStart})
+            </label>
+          )}
           <div className="flex items-end md:col-span-6">
             <Button type="submit" disabled={form.busy} className="h-10 rounded-sm px-8">
               {form.busy && <Loader2 className="animate-spin" />}
@@ -163,7 +185,7 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
   )
 }
 
-export function Transactions() {
+export function Transactions({ user }: { user: User }) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [q, setQ] = useState<EntryQuery>({ page: 1, limit: 20 })
   const [data, setData] = useState<{ entries: Entry[]; total: number } | null>(null)
@@ -186,7 +208,7 @@ export function Transactions() {
   return (
     <AppShell title="Transactions">
       <div className="grid gap-6">
-        <EntryForm accounts={accounts} onPosted={() => setReload((n) => n + 1)} />
+        <EntryForm accounts={accounts} startDay={user.period_start_day} onPosted={() => setReload((n) => n + 1)} />
         <Status err={loadErr} ok="" />
 
         <section aria-labelledby="journal-title" className="grid gap-3">
@@ -234,7 +256,9 @@ export function Transactions() {
                 return (
                   <tr key={e.id}>
                     <td className="text-muted-foreground tabular-nums">{e.entry_no}</td>
-                    <td className="whitespace-nowrap tabular-nums">{e.entry_date}</td>
+                    <td className="whitespace-nowrap tabular-nums">{e.entry_date}
+                      {e.period_date && <span className="block text-xs text-primary">→ next period</span>}
+                    </td>
                     <td>
                       <Badge className={cn("rounded-sm capitalize", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{e.kind.replace("_", " ")}</Badge>
                     </td>

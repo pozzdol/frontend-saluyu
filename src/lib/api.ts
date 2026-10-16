@@ -7,6 +7,7 @@ export type User = {
   img_url: string
   is_active: boolean
   start_date: string | null // null until the opening balance is set
+  period_start_day: number // 1..28, first day of the payday period
 }
 
 type Session = { access_token: string; user: User }
@@ -112,7 +113,7 @@ export async function logout() {
   }
 }
 
-export async function updateProfile(body: { name?: string; img_url?: string }) {
+export async function updateProfile(body: { name?: string; img_url?: string; period_start_day?: number }) {
   const res = await authed<{ data: User }>("/me", json("PATCH", body))
   setUser(res.data)
 }
@@ -147,6 +148,7 @@ export type Entry = {
   entry_date: string
   kind: EntryKind
   description: string
+  period_date: string | null // set when counted toward another period than entry_date
   created_at: string
   lines: Line[]
 }
@@ -207,6 +209,7 @@ export type PostEntryInput = {
   from_account_id: string
   to_account_id: string
   description: string
+  next_period?: boolean
 }
 
 export const postEntry = (body: PostEntryInput) =>
@@ -248,3 +251,58 @@ export const cashCount = (body: ReconcileInput) =>
 
 export const reconcile = (body: ReconcileInput) =>
   authed<{ data: ReconcileResult }>("/reconciliations", json("POST", body)).then((r) => r.data)
+
+// ---- Periods, budgets & reports (phase 3) ----
+
+export type Period = { start: string; end: string; next: string; prev: string; label: string }
+export type AmountRow = { account_id: string; code: string; name: string; amount: number }
+export type BudgetRow = { account_id: string; name: string; budget: number; actual: number; remaining: number; over: boolean; inherited: boolean }
+export type BalanceRow = { account_id: string; code: string; name: string; category: string; balance: number }
+
+export type Dashboard = {
+  period: Period
+  income: number
+  expense: number
+  surplus: number
+  savings_rate: number // 0..1
+  to_savings: AmountRow[]
+  to_savings_total: number
+  budgets: BudgetRow[]
+  balances: BalanceRow[]
+}
+
+export type BudgetList = { period: Period; rows: BudgetRow[] }
+
+export type IncomeStatement = {
+  period: Period
+  revenue: AmountRow[]
+  revenue_total: number
+  expense: AmountRow[]
+  expense_total: number
+  net_income: number
+}
+
+export type BalanceSheet = {
+  as_of: string
+  assets: AmountRow[]
+  assets_total: number
+  liabilities: AmountRow[]
+  liabilities_total: number
+  equity: AmountRow[]
+  equity_total: number
+  current_earnings: number
+  balanced: boolean
+}
+
+export const getDashboard = (date: string) => authed<{ data: Dashboard }>(`/dashboard${query({ date })}`).then((r) => r.data)
+
+export const getBudgets = (date: string) => authed<{ data: BudgetList }>(`/budgets${query({ date })}`).then((r) => r.data)
+
+export const putBudget = (accountId: string, body: { date: string; amount: number }) =>
+  authed<{ data: BudgetRow }>(`/budgets/${accountId}`, json("PUT", body)).then((r) => r.data)
+
+export const getIncomeStatement = (date: string) =>
+  authed<{ data: IncomeStatement }>(`/reports/income-statement${query({ date })}`).then((r) => r.data)
+
+export const getBalanceSheet = (date: string) =>
+  authed<{ data: BalanceSheet }>(`/reports/balance-sheet${query({ date })}`).then((r) => r.data)

@@ -20,6 +20,8 @@ type FieldProps = {
   value?: string
   onInput?: (e: InputEvent) => void
   inputMode?: "decimal" | "numeric" | "text"
+  min?: number | string
+  max?: number | string
 }
 
 // Field shows the server's per-field message, e.g. {"email": "must be a valid email"}.

@@ -59,7 +59,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           {user ? (
             <Button asChild size="lg" className="rounded-sm px-4">
-              <a href="/app/transactions">Console</a>
+              <a href="/app/dashboard">Console</a>
             </Button>
           ) : (
             <>

@@ -11,6 +11,9 @@ import { LedgerPage } from "@/pages/ledger"
 import { TrialBalancePage } from "@/pages/trial-balance"
 import { OpeningPage } from "@/pages/opening"
 import { ReconcilePage } from "@/pages/reconcile"
+import { DashboardPage } from "@/pages/dashboard"
+import { BudgetsPage } from "@/pages/budgets"
+import { ReportsPage } from "@/pages/reports"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
@@ -52,6 +55,9 @@ const Ledger = protect(({ params }: { params: { id: string } }) => <LedgerPage i
 const TrialBalance = protect(TrialBalancePage)
 const Opening = protect(OpeningPage)
 const Reconcile = protect(ReconcilePage)
+const Dashboard = protect(DashboardPage)
+const Budgets = protect(BudgetsPage)
+const Reports = protect(ReportsPage)
 
 export function App() {
   return (
@@ -61,7 +67,10 @@ export function App() {
         <Route path="/login" component={() => <AuthPage mode="login" />} />
         <Route path="/register" component={() => <AuthPage mode="register" />} />
         <Route path="/account" component={AccountPage} />
-        <Route path="/app" component={() => <Redirect to="/app/transactions" />} />
+        <Route path="/app" component={() => <Redirect to="/app/dashboard" />} />
+        <Route path="/app/dashboard" component={Dashboard} />
+        <Route path="/app/budgets" component={Budgets} />
+        <Route path="/app/reports" component={Reports} />
         <Route path="/app/transactions" component={TransactionsPage} />
         <Route path="/app/accounts" component={AccountsPage} />
         <Route path="/app/accounts/:id" component={Ledger} />
