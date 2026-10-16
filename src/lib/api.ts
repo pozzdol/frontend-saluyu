@@ -366,3 +366,83 @@ export const renameContact = (id: string, name: string) =>
 export const deleteContact = (id: string) => authed<void>(`/contacts/${id}`, { method: "DELETE" })
 export const getContact = (id: string) => authed<{ data: ContactDetail }>(`/contacts/${id}`).then((r) => r.data)
 export const postLoan = (body: LoanInput) => authed<{ data: Entry }>("/loans", json("POST", body)).then((r) => r.data)
+
+// ---- Sharing groups (phase 5) ----
+
+export type Member = { id: string; name: string; email: string; img_url: string }
+export type PendingInvite = { id: string; email: string; created_at: string }
+export type Group = { id: string; name: string; members: Member[]; pending_invites: PendingInvite[] }
+
+// MemberSummary is all another member can see: one payday period's totals, never transactions.
+export type MemberSummary = {
+  member: Member
+  period: Period
+  income: number
+  expense: number
+  surplus: number
+  savings_rate: number
+  to_savings: number
+  budget: number
+  budget_actual: number
+  assets: number
+}
+
+export type InboxInvite = { id: string; group_id: string; group_name: string; invited_by_name: string; created_at: string }
+// delta: change in what I owe the sender; positive = I owe more, negative = they owe me more.
+export type InboxLoan = { id: string; from_name: string; kind: EntryKind; amount: number; delta: number; entry_date: string; created_at: string }
+export type Inbox = { invites: InboxInvite[]; loans: InboxLoan[] }
+
+export const listGroups = () => authed<{ data: Group[] }>("/groups").then((r) => r.data)
+export const createGroup = (name: string) => authed<{ data: Group }>("/groups", json("POST", { name })).then((r) => r.data)
+export const inviteToGroup = (groupId: string, email: string) =>
+  authed<{ data: PendingInvite }>(`/groups/${groupId}/invites`, json("POST", { email })).then((r) => r.data)
+export const cancelInvite = (groupId: string, inviteId: string) =>
+  authed<void>(`/groups/${groupId}/invites/${inviteId}`, { method: "DELETE" })
+export const leaveGroup = (groupId: string) => authed<void>(`/groups/${groupId}/leave`, { method: "POST" })
+export const groupSummary = (groupId: string, date: string) =>
+  authed<{ data: MemberSummary[] }>(`/groups/${groupId}/summary${query({ date })}`).then((r) => r.data)
+export const getInbox = () => authed<{ data: Inbox }>("/inbox").then((r) => r.data)
+export const respondInvite = (inviteId: string, accept: boolean) =>
+  authed<void>(`/invites/${inviteId}/${accept ? "accept" : "reject"}`, { method: "POST" })
+export const linkContact = (contactId: string, userId: string | null) =>
+  authed<{ data: Contact }>(`/contacts/${contactId}/link`, json("PUT", { user_id: userId })).then((r) => r.data)
+export const approveLoan = (requestId: string, accountId: string) =>
+  authed<{ data: { to_entry_id: string } }>(`/loan-requests/${requestId}/approve`, json("POST", { account_id: accountId })).then((r) => r.data)
+export const rejectLoan = (requestId: string) => authed<void>(`/loan-requests/${requestId}/reject`, { method: "POST" })
+
+// useInboxCount polls the inbox every 30 seconds while the tab is visible, for the nav badge.
+// ponytail: polling, not websockets; a family-sized app does not need push.
+let inboxCount = 0
+const inboxListeners = new Set<() => void>()
+let inboxTimer: number | undefined
+
+export function refreshInbox() {
+  if (!accessToken || document.hidden) return
+  getInbox()
+    .then((i) => {
+      inboxCount = i.invites.length + i.loans.length
+      inboxListeners.forEach((l) => l())
+    })
+    .catch(() => {})
+}
+
+export function useInboxCount() {
+  return useSyncExternalStore(
+    (l) => {
+      inboxListeners.add(l)
+      if (inboxListeners.size === 1) {
+        refreshInbox()
+        inboxTimer = window.setInterval(refreshInbox, 30_000)
+        document.addEventListener("visibilitychange", refreshInbox)
+      }
+      return () => {
+        inboxListeners.delete(l)
+        if (inboxListeners.size === 0) {
+          window.clearInterval(inboxTimer)
+          document.removeEventListener("visibilitychange", refreshInbox)
+        }
+      }
+    },
+    () => inboxCount,
+  )
+}

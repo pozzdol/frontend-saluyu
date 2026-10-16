@@ -15,6 +15,7 @@ import { DashboardPage } from "@/pages/dashboard"
 import { BudgetsPage } from "@/pages/budgets"
 import { ReportsPage } from "@/pages/reports"
 import { ContactPage, ContactsPage } from "@/pages/contacts"
+import { GroupsPage } from "@/pages/groups"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
@@ -60,6 +61,7 @@ const Dashboard = protect(DashboardPage)
 const Budgets = protect(BudgetsPage)
 const Reports = protect(ReportsPage)
 const Contacts = protect(ContactsPage)
+const Groups = protect(GroupsPage)
 const ContactDetail = protect(({ params }: { params: { id: string } }) => <ContactPage id={params.id} />)
 
 export function App() {
@@ -81,6 +83,7 @@ export function App() {
         <Route path="/app/opening" component={Opening} />
         <Route path="/app/reconcile" component={Reconcile} />
         <Route path="/app/contacts" component={Contacts} />
+        <Route path="/app/groups" component={Groups} />
         <Route path="/app/contacts/:id" component={ContactDetail} />
         <Route default component={NotFound} />
       </Router>

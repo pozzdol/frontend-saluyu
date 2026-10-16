@@ -2,7 +2,7 @@ import { ArrowLeft, HandCoins, Loader2, Plus, Trash2 } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
-import { Field, SelectField, Status, toFormError, useForm, type FormError } from "@/components/field"
+import { Field, SelectField, Status, selectClass, toFormError, useForm, type FormError } from "@/components/field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,7 +11,10 @@ import {
   createContact,
   deleteContact,
   getContact,
+  linkContact,
   listAccounts,
+  listGroups,
+  useAuth,
   listContacts,
   perContact,
   postLoan,
@@ -21,9 +24,54 @@ import {
   type ContactDetail,
   type LoanInput,
   type LoanType,
+  type Member,
 } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { kindBadge } from "@/pages/transactions"
+
+// LinkMember ties a contact to a member of one of my groups: their book then mirrors our loans.
+function LinkMember({ contact, onChange }: { contact: Contact; onChange: () => void }) {
+  const { user } = useAuth()
+  const [members, setMembers] = useState<Member[]>([])
+  const [err, setErr] = useState<FormError>({})
+
+  useEffect(() => {
+    listGroups()
+      .then((groups) => {
+        const seen = new Map<string, Member>()
+        for (const g of groups) for (const m of g.members) if (m.id !== user?.id) seen.set(m.id, m)
+        setMembers([...seen.values()])
+      })
+      .catch(() => {})
+  }, [])
+
+  async function change(value: string) {
+    setErr({})
+    try {
+      await linkContact(contact.id, value || null)
+      onChange()
+    } catch (e) {
+      setErr(toFormError(e))
+    }
+  }
+
+  if (members.length === 0 && !contact.linked_user_id) return null
+  return (
+    <div className="grid gap-2">
+      <label className="grid max-w-md gap-1 text-sm">
+        <span className="font-medium">Linked group member</span>
+        <select value={contact.linked_user_id ?? ""} onChange={(e) => change((e.target as HTMLSelectElement).value)} className={selectClass}>
+          <option value="">Not linked</option>
+          {members.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.email})</option>)}
+        </select>
+        <span className="text-xs text-muted-foreground">
+          When linked, loans you record with {contact.name} wait in their inbox, and approving them records the same loan in their book.
+        </span>
+      </label>
+      <Status err={err} ok="" />
+    </div>
+  )
+}
 
 // NetText says who owes whom in words, so the sign is never the only signal.
 function NetText({ net, className }: { net: number; className?: string }) {
@@ -326,6 +374,8 @@ export function ContactPage({ id }: { id: string }) {
                 </div>
               </CardContent>
             </Card>
+
+            <LinkMember contact={c} onChange={() => setReload((n) => n + 1)} />
 
             <LoanForm contact={c} accounts={accounts} onPosted={() => setReload((n) => n + 1)} />
 

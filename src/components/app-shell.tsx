@@ -1,8 +1,8 @@
-import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, PiggyBank, Scale, ScanSearch, UserRound, Users } from "lucide-react"
+import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { Logo } from "@/components/site"
-import { useAuth } from "@/lib/api"
+import { useAuth, useInboxCount } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { href: "/app/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/app/budgets", label: "Budgets", icon: PiggyBank },
   { href: "/app/contacts", label: "Contacts", icon: Users },
+  { href: "/app/groups", label: "Groups", icon: UsersRound },
   { href: "/app/reports", label: "Reports", icon: FileText },
   { href: "/app/accounts", label: "Accounts", icon: BookOpen },
   { href: "/app/reconcile", label: "Reconcile", icon: ScanSearch },
@@ -22,6 +23,7 @@ const nav = [
 export function AppShell({ title, actions, children }: { title: string; actions?: ComponentChildren; children: ComponentChildren }) {
   const { path } = useLocation()
   const { user } = useAuth()
+  const inbox = useInboxCount()
 
   return (
     <div className="min-h-svh bg-[#f7f8fa] lg:grid lg:grid-cols-[15rem_1fr]">
@@ -44,6 +46,12 @@ export function AppShell({ title, actions, children }: { title: string; actions?
               >
                 <Icon className="size-4" />
                 {label}
+                {href === "/app/groups" && inbox > 0 && (
+                  <span className="ml-auto rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground tabular-nums">
+                    {inbox}
+                    <span className="sr-only"> waiting for you</span>
+                  </span>
+                )}
               </a>
             )
           })}
