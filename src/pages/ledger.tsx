@@ -1,14 +1,14 @@
 import { ArrowLeft } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
+import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getLedger, type Ledger } from "@/lib/api"
 import { cn, fmtIDR } from "@/lib/utils"
 import { typeDot } from "@/pages/accounts"
 import { kindBadge } from "@/pages/transactions"
+import { DatePicker, fmtDate } from "@/components/picker"
 
 // LedgerPage is one account's history with a running balance (the Excel "Buku Besar" sheet).
 export function LedgerPage({ id }: { id: string }) {
@@ -42,19 +42,36 @@ export function LedgerPage({ id }: { id: string }) {
               {a.type} · {a.category} · normal balance {a.normal_balance.toLowerCase()}
               {!a.is_active && <Badge className="rounded-sm bg-muted text-muted-foreground">Inactive</Badge>}
             </p>
-            <div className="grid gap-1">
-              <Label htmlFor="from">From</Label>
-              <Input id="from" type="date" className="h-9 rounded-sm bg-white" onChange={(e) => setRange((r) => ({ ...r, from: (e.target as HTMLInputElement).value }))} />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="to">To</Label>
-              <Input id="to" type="date" className="h-9 rounded-sm bg-white" onChange={(e) => setRange((r) => ({ ...r, to: (e.target as HTMLInputElement).value }))} />
+            <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
+              <div className="grid gap-1">
+                <Label htmlFor="from">From</Label>
+                <DatePicker id="from" title="From" placeholder="Start" clearable value={range.from} onChange={(d) => setRange((r) => ({ ...r, from: d }))} className="bg-white md:h-9 md:w-44" />
+              </div>
+              <div className="grid gap-1">
+                <Label htmlFor="to">To</Label>
+                <DatePicker id="to" title="To" placeholder="Today" clearable value={range.to} onChange={(d) => setRange((r) => ({ ...r, to: d }))} className="bg-white md:h-9 md:w-44" />
+              </div>
             </div>
           </div>
         )}
 
         {ledger && (
-          <TableCard>
+          <MobileList empty={ledger.rows.length === 0 ? "No movements in this range." : undefined}>
+            <MobileItem title="Opening balance" meta={range.from ? `Before ${fmtDate(range.from)}` : undefined} value={fmtIDR(ledger.opening)} />
+            {ledger.rows.map((r, i) => (
+              <MobileItem
+                key={`${r.entry_id}-${i}`}
+                title={r.description || r.counter}
+                meta={<><span>{fmtDate(r.entry_date)}</span><span>{r.counter}</span><span>Balance {fmtIDR(r.balance)}</span></>}
+                value={r.debit ? `+ ${fmtIDR(r.debit)}` : `− ${fmtIDR(r.credit)}`}
+                valueClass={(r.debit > 0) === (ledger.account.normal_balance === "Debit") ? "text-emerald-700" : "text-rose-700"}
+              />
+            ))}
+            <MobileItem title="Closing balance" value={fmtIDR(ledger.closing)} valueClass={ledger.closing < 0 ? "text-destructive" : undefined} />
+          </MobileList>
+        )}
+        {ledger && (
+          <TableCard className="hidden md:block">
             <thead>
               <tr>
                 <th>Date</th>
@@ -74,7 +91,7 @@ export function LedgerPage({ id }: { id: string }) {
               </tr>
               {ledger.rows.map((r, i) => (
                 <tr key={`${r.entry_id}-${i}`}>
-                  <td className="whitespace-nowrap">{r.entry_date}</td>
+                  <td className="whitespace-nowrap">{fmtDate(r.entry_date)}</td>
                   <td className="text-muted-foreground">{r.entry_no}</td>
                   <td>
                     <Badge className={cn("rounded-sm capitalize", kindBadge[r.kind] ?? "bg-muted text-foreground")}>{r.kind.replace("_", " ")}</Badge>

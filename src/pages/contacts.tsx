@@ -1,8 +1,11 @@
 import { ArrowLeft, HandCoins, Loader2, Plus, Trash2 } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
-import { Field, SelectField, Status, selectClass, toFormError, useForm, type FormError } from "@/components/field"
+import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
+import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
+import { SelectPicker, fmtDate } from "@/components/picker"
+import { Segmented } from "@/components/segmented"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -58,16 +61,19 @@ function LinkMember({ contact, onChange }: { contact: Contact; onChange: () => v
   if (members.length === 0 && !contact.linked_user_id) return null
   return (
     <div className="grid gap-2">
-      <label className="grid max-w-md gap-1 text-sm">
-        <span className="font-medium">Linked group member</span>
-        <select value={contact.linked_user_id ?? ""} onChange={(e) => change((e.target as HTMLSelectElement).value)} className={selectClass}>
-          <option value="">Not linked</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.email})</option>)}
-        </select>
+      <div className="grid max-w-md gap-1 text-sm">
+        <span className="font-medium" id="linked-label">Linked group member</span>
+        <SelectPicker
+          aria-label="Linked group member"
+          title="Linked group member"
+          value={contact.linked_user_id ?? ""}
+          onChange={change}
+          options={[{ value: "", label: "Not linked" }, ...members.map((m) => ({ value: m.id, label: m.name, hint: m.email }))]}
+        />
         <span className="text-xs text-muted-foreground">
           When linked, loans you record with {contact.name} wait in their inbox, and approving them records the same loan in their book.
         </span>
-      </label>
+      </div>
       <Status err={err} ok="" />
     </div>
   )
@@ -136,7 +142,16 @@ export function ContactsPage() {
 
         <Status err={err} ok="" />
         {contacts && (
-          <TableCard>
+          <MobileList empty={contacts.length === 0 ? "No contacts yet. Add the people you share money with." : undefined}>
+            {contacts.map((c) => (
+              <MobileItem key={c.id} href={`/app/contacts/${c.id}`} title={c.name}
+                meta={c.receivable && c.payable ? <span>Owes you {fmtIDR(c.receivable)} · you owe {fmtIDR(c.payable)}</span> : undefined}
+                value={<NetText net={c.net} className="text-sm" />} />
+            ))}
+          </MobileList>
+        )}
+        {contacts && (
+          <TableCard className="hidden md:block">
             <thead>
               <tr>
                 <th>Name</th>
@@ -172,7 +187,6 @@ const loanTypes: Record<LoanType, { label: string; help: string; account: string
   lunas_keluar: { label: "I paid them back", help: "Money you return to them.", account: "Paid from" },
 }
 
-const label = (a: Account) => `${a.code} · ${a.name}`
 
 function overpayText(type: LoanType, c: Contact) {
   const incoming = type === "lunas_masuk"
@@ -237,20 +251,12 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
   return (
     <Card className="rounded-sm">
       <CardContent className="grid gap-4">
-        <div role="tablist" aria-label="Loan type" className="flex flex-wrap gap-1 rounded-sm border bg-[#f7f8fa] p-1">
-          {(Object.keys(loanTypes) as LoanType[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={type === t}
-              onClick={() => (setType(t), setOverpay(null), setErr({}), setOk(""))}
-              className={cn("rounded-sm px-3 py-1.5 text-sm text-muted-foreground", type === t && "bg-white font-medium text-primary shadow-sm")}
-            >
-              {loanTypes[t].label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Loan type"
+          value={type}
+          onChange={(t) => (setType(t), setOverpay(null), setErr({}), setOk(""))}
+          items={(Object.keys(loanTypes) as LoanType[]).map((t) => ({ value: t, label: loanTypes[t].label }))}
+        />
         <p className="text-sm text-muted-foreground">{loanTypes[type].help}</p>
 
         {overpay && (
@@ -267,18 +273,14 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
 
         <form onSubmit={onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2"><Status err={err} ok={ok} /></div>
-          <Field name="amount" label="Amount (Rp)" placeholder="100.000" inputMode="decimal" error={err.fields?.amount} />
-          <Field name="entry_date" label="Date" type="date" defaultValue={todayISO()} error={err.fields?.entry_date} />
-          <SelectField name="account_id" label={loanTypes[type].account} error={err.fields?.account_id}>
-            {money.map((a) => <option key={a.id} value={a.id}>{label(a)}</option>)}
-          </SelectField>
+          <AmountField name="amount" label="Amount (Rp)" placeholder="100.000" error={err.fields?.amount} />
+          <DateField name="entry_date" label="Date" defaultValue={todayISO()} error={err.fields?.entry_date} />
+          <SelectField name="account_id" label={loanTypes[type].account} options={accountOptions(money)} error={err.fields?.account_id} />
           <Field name="description" label="Note" placeholder="Optional" error={err.fields?.description} />
           {type === "talangan" && (
             <>
-              <Field name="my_share" label="My share (Rp), for split bills" placeholder="0" inputMode="decimal" error={err.fields?.my_share} />
-              <SelectField name="expense_account_id" label="My share is spent on" error={err.fields?.expense_account_id}>
-                {expenses.map((a) => <option key={a.id} value={a.id}>{label(a)}</option>)}
-              </SelectField>
+              <AmountField name="my_share" label="My share (Rp), for split bills" placeholder="0" error={err.fields?.my_share} />
+              <SelectField name="expense_account_id" label="My share is spent on" options={accountOptions(expenses)} error={err.fields?.expense_account_id} />
             </>
           )}
           <div className="md:col-span-2">
@@ -356,12 +358,7 @@ export function ContactPage({ id }: { id: string }) {
                   <p>You owe {fmtIDR(c.payable)}</p>
                 </div>
                 <div className="ml-auto flex flex-wrap items-end gap-2">
-                  <input
-                    id="contact-name"
-                    aria-label="Contact name"
-                    defaultValue={c.name}
-                    className="h-9 rounded-sm border border-input bg-white px-2.5 text-sm"
-                  />
+                  <Input id="contact-name" aria-label="Contact name" defaultValue={c.name} className="h-11 w-40 rounded-sm bg-white md:h-9" />
                   <Button variant="outline" size="sm" className="h-9 rounded-sm" onClick={rename}>Rename</Button>
                   {armed ? (
                     <>
@@ -381,7 +378,18 @@ export function ContactPage({ id }: { id: string }) {
 
             <section className="grid gap-2">
               <h2 className="text-lg font-semibold">History</h2>
-              <TableCard>
+              <MobileList empty={detail.history.length === 0 ? `Nothing recorded with ${c.name} yet.` : undefined}>
+                {detail.history.map((l, i) => {
+                  const change = l.debit - l.credit
+                  return (
+                    <MobileItem key={`${l.entry_id}-${i}`} title={l.description}
+                      meta={<><span>{fmtDate(l.entry_date)}</span><NetText net={l.running_net} /></>}
+                      value={`${change > 0 ? "+" : "−"} ${fmtIDR(Math.abs(change))}`}
+                      valueClass={change > 0 ? "text-emerald-700" : "text-rose-700"} />
+                  )
+                })}
+              </MobileList>
+              <TableCard className="hidden md:block">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -397,7 +405,7 @@ export function ContactPage({ id }: { id: string }) {
                     const change = l.debit - l.credit
                     return (
                       <tr key={`${l.entry_id}-${i}`}>
-                        <td className="whitespace-nowrap">{l.entry_date}</td>
+                        <td className="whitespace-nowrap">{fmtDate(l.entry_date)}</td>
                         <td className="text-muted-foreground">{l.entry_no}</td>
                         <td><Badge className={cn("rounded-sm capitalize", kindBadge[l.kind] ?? "bg-muted text-foreground")}>{l.kind.replace("_", " ")}</Badge></td>
                         <td className="max-w-56 truncate">{l.description}</td>

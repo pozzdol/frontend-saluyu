@@ -130,3 +130,58 @@
     @apply font-sans;
     }
 }
+@layer base {
+  /* Always keep the vertical scrollbar, so switching between a short and a long view never
+     shifts the layout sideways. scrollbar-gutter: stable did not hold in Chrome here; the track
+     is transparent (below), so on short pages nothing is visible. */
+  html {
+    overflow-y: scroll;
+  }
+
+  /* Everything clickable shows a pointer; Tailwind's preflight resets buttons to the default arrow. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="option"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="menuitem"],
+  a[href],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
+/* Thin scrollbars: transparent track, no arrow buttons. The standard properties cover Chrome 121+,
+   Edge, Firefox and Safari 18.2+; the -webkit- rules are only for older WebKit/Blink. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+}
+
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--foreground) 22%, transparent);
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}

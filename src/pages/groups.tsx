@@ -1,7 +1,8 @@
 import { Check, Loader2, LogOut, Mail, Plus, ShieldCheck, X } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
-import { Field, Status, selectClass, toFormError, useForm, type FormError } from "@/components/field"
+import { Field, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
+import { SelectPicker } from "@/components/picker"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -68,13 +69,11 @@ function LoanRequest({ loan, accounts, onDone }: { loan: InboxLoan; accounts: Ac
         <span className="text-muted-foreground">{loan.entry_date}</span>
       </div>
       <Status err={err} ok="" />
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="grid gap-1 text-sm">
+      <div className="grid gap-2 md:flex md:flex-wrap md:items-end">
+        <div className="grid gap-1 text-sm md:w-72">
           <span className="text-muted-foreground">Record my side in</span>
-          <select value={accountId} onChange={(e) => setAccountId((e.target as HTMLSelectElement).value)} className={cn(selectClass, "h-9 w-64")}>
-            {options.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
-          </select>
-        </label>
+          <SelectPicker aria-label="Record my side in" title="Record my side in" value={accountId} onChange={setAccountId} options={accountOptions(options)} className="md:h-9" />
+        </div>
         <Button size="sm" className="h-9 rounded-sm" disabled={busy} onClick={() => act(true)}>
           {busy ? <Loader2 className="animate-spin" /> : <Check />} Approve
         </Button>
@@ -103,7 +102,32 @@ function SummaryTable({ group, date, onPeriod }: { group: Group; date: string; o
     <>
       <Status err={err} ok="" />
       {rows && (
-        <TableCard>
+        <ul className="grid gap-3 md:hidden">
+          {rows.map((s) => (
+            <li key={s.member.id} className="rounded-sm border bg-card p-4">
+              <p className="font-medium">{s.member.name}</p>
+              <p className="text-xs text-muted-foreground">{s.period.label}</p>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm tabular-nums">
+                {[
+                  ["Income", fmtIDR(s.income)],
+                  ["Expense", fmtIDR(s.expense)],
+                  ["Surplus", fmtIDR(s.surplus)],
+                  ["Saved", `${(s.savings_rate * 100).toFixed(0)}%`],
+                  ["Budget used", s.budget > 0 ? `${Math.round((s.budget_actual / s.budget) * 100)}%` : "—"],
+                  ["Assets", fmtIDR(s.assets)],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-xs text-muted-foreground">{k}</dt>
+                    <dd className="font-medium">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows && (
+        <TableCard className="hidden md:block">
           <thead>
             <tr>
               <th>Member</th>

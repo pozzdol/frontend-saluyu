@@ -1,12 +1,14 @@
 import { KeyRound, Loader2, LogOut, UserRound } from "lucide-react"
 import { useState } from "preact/hooks"
 import { Field, Status, useForm } from "@/components/field"
-import { SiteHeader } from "@/components/site"
+import { Label } from "@/components/ui/label"
+import { AppShell } from "@/components/app-shell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { changePassword, logout, updateProfile, type User } from "@/lib/api"
+import { DayOfMonthPicker } from "@/components/picker"
 
 const initials = (name: string) =>
   name
@@ -15,6 +17,19 @@ const initials = (name: string) =>
     .slice(0, 2)
     .join("")
     .toUpperCase()
+
+// PaydayField picks the day each budget period starts; the hidden input feeds the profile form.
+function PaydayField({ day, error }: { day: number; error?: string }) {
+  const [value, setValue] = useState(day)
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor="period_start_day">Payday (period start day)</Label>
+      <DayOfMonthPicker id="period_start_day" value={value} onChange={setValue} />
+      <input type="hidden" name="period_start_day" value={String(value)} />
+      {error && <p className="text-xs text-destructive">{error[0].toUpperCase() + error.slice(1)}</p>}
+    </div>
+  )
+}
 
 export function Account({ user }: { user: User }) {
   const profile = useForm(async (v) => {
@@ -37,11 +52,9 @@ export function Account({ user }: { user: User }) {
   const [leaving, setLeaving] = useState(false)
 
   return (
-    <div className="min-h-svh bg-[#f7f8fa]">
-      <SiteHeader />
-
-      <section className="bg-gradient-to-b from-[#eaf2ff] to-[#f7f8fa]">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-5 px-4 py-10">
+    <AppShell title="Profile">
+      <section className="mb-6 rounded-sm border bg-card">
+        <div className="flex flex-wrap items-center gap-4 p-4 md:gap-5 md:p-6">
           <Avatar className="size-16 rounded-sm ring-4 ring-white">
             <AvatarImage src={user.img_url || undefined} alt="" className="rounded-sm object-cover" />
             <AvatarFallback className="rounded-sm bg-primary text-lg font-semibold text-primary-foreground">
@@ -50,14 +63,14 @@ export function Account({ user }: { user: User }) {
           </Avatar>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold tracking-tight">{user.name}</h1>
+              <h2 className="truncate text-xl font-semibold tracking-tight">{user.name}</h2>
               <Badge className="rounded-sm bg-emerald-100 text-emerald-700">{user.is_active ? "Active" : "Inactive"}</Badge>
             </div>
             <p className="truncate text-sm text-muted-foreground">{user.email}</p>
           </div>
           <Button
             variant="outline"
-            className="ml-auto h-10 rounded-sm bg-white"
+            className="w-full rounded-sm bg-white md:ml-auto md:w-auto"
             disabled={leaving}
             onClick={async () => {
               setLeaving(true)
@@ -70,7 +83,7 @@ export function Account({ user }: { user: User }) {
         </div>
       </section>
 
-      <main className="mx-auto grid max-w-5xl gap-6 px-4 pb-16 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card className="rounded-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -90,16 +103,7 @@ export function Account({ user }: { user: User }) {
                 defaultValue={user.img_url}
                 error={profile.err.fields?.img_url}
               />
-              <Field
-                name="period_start_day"
-                label="Payday (period start day)"
-                type="number"
-                min={1}
-                max={28}
-                inputMode="numeric"
-                defaultValue={String(user.period_start_day)}
-                error={profile.err.fields?.period_start_day}
-              />
+              <PaydayField day={user.period_start_day} error={profile.err.fields?.period_start_day} />
               <p className="-mt-2 text-xs text-muted-foreground">
                 Day 1 to 28 when your month starts. Changing this re-slices past periods too.
               </p>
@@ -144,7 +148,7 @@ export function Account({ user }: { user: User }) {
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

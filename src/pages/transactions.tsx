@@ -1,11 +1,14 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
-import { Field, SelectField, Status, selectClass, toFormError, useForm, type FormError } from "@/components/field"
+import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
+import { AmountField, CheckboxField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
+import { DatePicker, SelectPicker, fmtDate, useIsMobile } from "@/components/picker"
+import { Segmented } from "@/components/segmented"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   ApiError,
   perContact,
@@ -44,8 +47,6 @@ export const kindBadge: Record<string, string> = {
   loan: "bg-orange-50 text-orange-700",
   repayment: "bg-teal-50 text-teal-700",
 }
-
-const label = (a: Account) => `${a.code} · ${a.name}`
 
 function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
   const [kind, setKind] = useState<FormKind>("expense")
@@ -90,57 +91,43 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
   return (
     <Card className="rounded-sm">
       <CardContent>
-        <div role="tablist" aria-label="Transaction type" className="mb-5 inline-flex rounded-sm border bg-[#f7f8fa] p-1">
-          {(Object.keys(kinds) as FormKind[]).map((k) => {
+        <Segmented
+          label="Transaction type"
+          className="mb-5"
+          value={kind}
+          onChange={setKind}
+          items={(Object.keys(kinds) as FormKind[]).map((k) => {
             const Icon = kinds[k].icon
-            return (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={kind === k}
-                onClick={() => setKind(k)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-sm px-4 py-1.5 text-sm text-muted-foreground",
-                  kind === k && "bg-white font-medium text-primary shadow-sm",
-                )}
-              >
-                <Icon className="size-4" />
-                {kinds[k].label}
-              </button>
-            )
+            return { value: k, label: <><Icon className="size-4" />{kinds[k].label}</> }
           })}
-        </div>
+        />
 
         <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-6">
           <div className="md:col-span-6">
             <Status err={err} ok={form.ok} />
           </div>
-          <Field name="entry_date" label="Date" type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value)} error={err.fields?.entry_date} />
           <div className="md:col-span-2">
-            <Field name="amount" label="Amount (Rp)" placeholder="25.000" error={err.fields?.amount} />
+            <AmountField name="amount" label="Amount (Rp)" placeholder="25.000" error={err.fields?.amount} />
           </div>
-          <SelectField name="from" label={rule.fromLabel} value={from} onChange={setFrom} error={err.fields?.from_account_id} className="md:col-span-3">
-            {fromOptions.map((a) => (
-              <option key={a.id} value={a.id}>{label(a)}</option>
-            ))}
-          </SelectField>
-          <SelectField name="to" label={rule.toLabel} value={to} onChange={setTo} error={err.fields?.to_account_id} className="md:col-span-3">
-            {toOptions.map((a) => (
-              <option key={a.id} value={a.id}>{label(a)}</option>
-            ))}
-          </SelectField>
+          <DateField name="entry_date" label="Date" value={date} onChange={setDate} error={err.fields?.entry_date} className="md:col-span-1" />
+          <SelectField name="from" label={rule.fromLabel} value={from} onChange={setFrom} options={accountOptions(fromOptions)} error={err.fields?.from_account_id} className="md:col-span-3" />
+          <SelectField name="to" label={rule.toLabel} value={to} onChange={setTo} options={accountOptions(toOptions)} error={err.fields?.to_account_id} className="md:col-span-3" />
           <div className="md:col-span-3">
             <Field name="description" label="Note" placeholder={kind === "income" ? "Gaji September" : "Makan siang"} error={err.fields?.description} />
           </div>
           {showNext && (
-            <label className="flex items-center gap-2 text-sm md:col-span-6">
-              <input type="checkbox" checked={nextPeriod} onChange={(e) => setNextPeriod((e.target as HTMLInputElement).checked)} className="accent-primary" />
-              Count toward next period (starts {nextStart})
-            </label>
+            <div className="md:col-span-6">
+              <CheckboxField
+                name="next_period"
+                label="Count toward next period"
+                hint={`Salary that arrives early: it will show in the period starting ${fmtDate(nextStart)}.`}
+                checked={nextPeriod}
+                onChange={setNextPeriod}
+              />
+            </div>
           )}
           <div className="flex items-end md:col-span-6">
-            <Button type="submit" disabled={form.busy} className="h-10 rounded-sm px-8">
+            <Button type="submit" disabled={form.busy} className="h-10 w-full rounded-sm px-8 md:w-auto">
               {form.busy && <Loader2 className="animate-spin" />}
               Save {rule.label.toLowerCase()}
             </Button>
@@ -189,6 +176,64 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
   )
 }
 
+const kindOptions = [
+  { value: "", label: "All types" },
+  { value: "income", label: "Income" },
+  { value: "expense", label: "Expense" },
+  { value: "transfer", label: "Transfer" },
+  { value: "loan", label: "Loan" },
+  { value: "repayment", label: "Repayment" },
+  { value: "opening", label: "Opening" },
+  { value: "cash_count", label: "Cash count" },
+  { value: "adjustment", label: "Adjustment" },
+]
+
+// JournalFilters sit inline on desktop; on phones they live behind a "Filters" button in a
+// bottom sheet so the list stays on screen.
+function JournalFilters({ q, set, accounts }: { q: EntryQuery; set: (p: EntryQuery) => void; accounts: Account[] }) {
+  const mobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  const active = [q.q, q.kind, q.account_id, q.from, q.to].filter(Boolean).length
+  const accountOpts = [{ value: "", label: "All accounts" }, ...accountOptions(accounts)]
+
+  const controls = (
+    <>
+      <Input
+        type="search"
+        placeholder="Search note"
+        aria-label="Search note"
+        defaultValue={q.q ?? ""}
+        className="h-11 rounded-sm bg-white md:h-9 md:w-44"
+        onChange={(e) => set({ q: (e.target as HTMLInputElement).value })}
+      />
+      <SelectPicker aria-label="Type" title="Type" value={q.kind ?? ""} options={kindOptions} onChange={(v) => set({ kind: v })} className="bg-white md:h-9 md:w-40" />
+      <SelectPicker aria-label="Account" title="Account" value={q.account_id ?? ""} options={accountOpts} onChange={(v) => set({ account_id: v })} className="bg-white md:h-9 md:w-52" />
+      <DatePicker aria-label="From date" title="From" placeholder="From" clearable value={q.from ?? ""} onChange={(v) => set({ from: v })} className="bg-white md:h-9 md:w-40" />
+      <DatePicker aria-label="To date" title="To" placeholder="To" clearable value={q.to ?? ""} onChange={(v) => set({ to: v })} className="bg-white md:h-9 md:w-40" />
+    </>
+  )
+
+  if (!mobile) return <div className="flex flex-wrap items-center gap-2">{controls}</div>
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="rounded-sm bg-white">
+          <SlidersHorizontal /> Filters{active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="bottom" title="Filter journal">
+        <div className="grid gap-3 pb-2">
+          {controls}
+          <Button className="rounded-sm" onClick={() => setOpen(false)}>Show results</Button>
+          {active > 0 && (
+            <Button variant="ghost" onClick={() => (set({ q: "", kind: "", account_id: "", from: "", to: "" }), setOpen(false))}>Clear filters</Button>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 export function Transactions({ user }: { user: User }) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [q, setQ] = useState<EntryQuery>({ page: 1, limit: 20 })
@@ -207,7 +252,7 @@ export function Transactions({ user }: { user: User }) {
 
   const pages = data ? Math.max(1, Math.ceil(data.total / (q.limit ?? 20))) : 1
   const set = (patch: EntryQuery) => setQ((old) => ({ ...old, ...patch, page: patch.page ?? 1 }))
-  const accountOptions = useMemo(() => accounts.slice().sort((a, b) => a.code.localeCompare(b.code)), [accounts])
+  const accountOptionsSorted = useMemo(() => accounts.slice().sort((a, b) => a.code.localeCompare(b.code)), [accounts])
 
   return (
     <AppShell title="Transactions">
@@ -216,32 +261,46 @@ export function Transactions({ user }: { user: User }) {
         <Status err={loadErr} ok="" />
 
         <section aria-labelledby="journal-title" className="grid gap-3">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h2 id="journal-title" className="mr-auto text-lg font-semibold">Journal</h2>
-            <Input
-              type="search"
-              placeholder="Search note"
-              aria-label="Search note"
-              className="h-9 w-44 rounded-sm bg-white"
-              onChange={(e) => set({ q: (e.target as HTMLInputElement).value })}
-            />
-            <select aria-label="Type" className={cn(selectClass, "h-9 w-36 bg-white")} onChange={(e) => set({ kind: (e.target as HTMLSelectElement).value })}>
-              <option value="">All types</option>
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
-              <option value="transfer">Transfer</option>
-            </select>
-            <select aria-label="Account" className={cn(selectClass, "h-9 w-48 bg-white")} onChange={(e) => set({ account_id: (e.target as HTMLSelectElement).value })}>
-              <option value="">All accounts</option>
-              {accountOptions.map((a) => (
-                <option key={a.id} value={a.id}>{label(a)}</option>
-              ))}
-            </select>
-            <Input type="date" aria-label="From date" className="h-9 w-40 rounded-sm bg-white" onChange={(e) => set({ from: (e.target as HTMLInputElement).value })} />
-            <Input type="date" aria-label="To date" className="h-9 w-40 rounded-sm bg-white" onChange={(e) => set({ to: (e.target as HTMLInputElement).value })} />
+            <JournalFilters q={q} set={set} accounts={accountOptionsSorted} />
           </div>
 
-          <TableCard>
+          <MobileList empty={data && data.entries.length === 0 ? "No transactions yet. Record your first one above." : undefined}>
+            {data?.entries.map((e) => {
+              const side = e.kind === "income" ? e.lines.filter((l) => l.credit > 0) : e.lines.filter((l) => l.debit > 0)
+              const parts = side.map((l) => l.contact_name ?? l.name)
+              return (
+                <MobileItem
+                  key={e.id}
+                  title={e.description || parts.join(", ")}
+                  meta={
+                    <>
+                      <span>{fmtDate(e.entry_date)}</span>
+                      <Badge className={cn("rounded-sm capitalize", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{e.kind.replace("_", " ")}</Badge>
+                      {e.period_date && <span className="text-primary">→ next period</span>}
+                      <span className="w-full truncate">
+                        {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")} ← {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")}
+                      </span>
+                    </>
+                  }
+                  value={fmtIDR(amountOf(e))}
+                  valueClass={e.kind === "income" ? "text-emerald-700" : e.kind === "expense" ? "text-rose-700" : undefined}
+                  actions={
+                    <DeleteButton
+                      onConfirm={() =>
+                        deleteEntry(e.id)
+                          .then(() => setReload((n) => n + 1))
+                          .catch((err) => setLoadErr(toFormError(err)))
+                      }
+                    />
+                  }
+                />
+              )
+            })}
+          </MobileList>
+
+          <TableCard className="hidden md:block">
             <thead>
               <tr>
                 <th>No</th>
@@ -261,7 +320,7 @@ export function Transactions({ user }: { user: User }) {
                 return (
                   <tr key={e.id}>
                     <td className="text-muted-foreground tabular-nums">{e.entry_no}</td>
-                    <td className="whitespace-nowrap tabular-nums">{e.entry_date}
+                    <td className="whitespace-nowrap tabular-nums">{fmtDate(e.entry_date)}
                       {e.period_date && <span className="block text-xs text-primary">→ next period</span>}
                     </td>
                     <td>

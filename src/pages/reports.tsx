@@ -4,11 +4,11 @@ import { AppShell, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { getBalanceSheet, getIncomeStatement, type AmountRow, type BalanceSheet, type IncomeStatement } from "@/lib/api"
-import { cn, fmtIDR } from "@/lib/utils"
+import { fmtIDR } from "@/lib/utils"
 import { useLocation } from "preact-iso"
+import { DatePicker, fmtDate } from "@/components/picker"
+import { Segmented } from "@/components/segmented"
 
 const views = { pl: "Income statement", bs: "Balance sheet" } as const
 
@@ -42,10 +42,13 @@ export function ReportsPage() {
   const [bs, setBs] = useState<BalanceSheet | null>(null)
   const [err, setErr] = useState<FormError>({})
 
+  // Both reports load together, so switching tabs never shows an empty page while fetching.
+  // The old numbers stay on screen until the new ones arrive.
   useEffect(() => {
-    const load = view === "pl" ? getIncomeStatement(date).then(setPl) : getBalanceSheet(date).then(setBs)
-    load.then(() => setErr({})).catch((e) => setErr(toFormError(e)))
-  }, [view, date])
+    Promise.all([getIncomeStatement(date).then(setPl), getBalanceSheet(date).then(setBs)])
+      .then(() => setErr({}))
+      .catch((e) => setErr(toFormError(e)))
+  }, [date])
 
   return (
     <AppShell
@@ -54,28 +57,25 @@ export function ReportsPage() {
         view === "pl" ? (
           <PeriodPicker period={pl?.period} onChange={setDate} />
         ) : (
-          <div className="grid gap-1">
-            <Label htmlFor="as_of">As of</Label>
-            <Input id="as_of" type="date" value={date} className="h-9 rounded-sm bg-white" onChange={(e) => setDate((e.target as HTMLInputElement).value)} />
-          </div>
+          // Same height as PeriodPicker so the header does not jump between tabs.
+          <DatePicker
+            aria-label="Balance sheet as of"
+            title="As of"
+            value={bs?.as_of ?? date}
+            display={`As of ${fmtDate(bs?.as_of ?? date)}`}
+            onChange={(d) => d && setDate(d)}
+            className="w-full justify-center bg-white font-medium md:h-9 md:w-64"
+          />
         )
       }
     >
       <div className="grid gap-4">
-        <div role="tablist" aria-label="Report" className="inline-flex w-fit rounded-sm border bg-[#f7f8fa] p-1">
-          {(Object.keys(views) as (keyof typeof views)[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={view === k}
-              onClick={() => route(`${path}?${new URLSearchParams({ ...query, view: k })}`, true)}
-              className={cn("rounded-sm px-4 py-1.5 text-sm text-muted-foreground", view === k && "bg-white font-medium text-primary shadow-sm")}
-            >
-              {views[k]}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Report"
+          value={view}
+          onChange={(k) => route(`${path}?${new URLSearchParams({ ...query, view: k })}`, true)}
+          items={(Object.keys(views) as (keyof typeof views)[]).map((k) => ({ value: k, label: views[k] }))}
+        />
         <Status err={err} ok="" />
 
         {view === "pl" && pl && (

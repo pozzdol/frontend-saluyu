@@ -1,6 +1,7 @@
 import { Loader2, Plus } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
+import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
+import { Switch } from "@/components/ui/switch"
 import { Field, SelectField, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,13 +37,10 @@ function NewAccount({ onCreated }: { onCreated: () => void }) {
           </div>
           <Field name="code" label="Code" placeholder="5108" error={form.err.fields?.code} />
           <Field name="name" label="Name" placeholder="Kopi" error={form.err.fields?.name} />
-          <SelectField name="type" label="Type" value={type} onChange={(v) => setType(v as AccountType)} error={form.err.fields?.type}>
-            {typeOrder.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </SelectField>
+          <SelectField name="type" label="Type" value={type} onChange={(v) => setType(v as AccountType)} error={form.err.fields?.type}
+            options={typeOrder.map((t) => ({ value: t, label: t }))} />
           <Field name="category" label="Category" placeholder="Beban" error={form.err.fields?.category} />
-          <Button type="submit" disabled={form.busy} className="h-10 rounded-sm">
+          <Button type="submit" disabled={form.busy} className="h-10 w-full rounded-sm md:w-auto">
             {form.busy ? <Loader2 className="animate-spin" /> : <Plus />}
             Add
           </Button>
@@ -87,7 +85,17 @@ export function Accounts() {
                 {type}
                 <span className="text-xs font-normal text-muted-foreground">normal balance {rows[0].normal_balance.toLowerCase()}</span>
               </h2>
-              <TableCard>
+              <MobileList>
+                {rows.map((a) => (
+                  <MobileItem
+                    key={a.id}
+                    title={<a href={`/app/accounts/${a.id}`} className="text-primary">{a.name}</a>}
+                    meta={<><span className="tabular-nums">{a.code}</span><span>{a.category}</span>{!a.is_active && <span>Inactive</span>}</>}
+                    value={<Switch checked={a.is_active} onCheckedChange={() => toggle(a)} aria-label={`${a.name} active`} />}
+                  />
+                ))}
+              </MobileList>
+              <TableCard className="hidden md:block">
                 <thead>
                   <tr>
                     <th className="w-24">Code</th>

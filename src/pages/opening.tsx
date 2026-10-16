@@ -2,7 +2,7 @@ import { Info, Loader2, Lock } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
-import { Field, Status, toFormError, type FormError } from "@/components/field"
+import { DateField, Status, toFormError, type FormError } from "@/components/field"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -120,13 +120,7 @@ export function OpeningPage({ user }: { user: User }) {
             <Status err={err} ok="" />
             <Card className="rounded-sm">
               <CardContent className="grid gap-4 sm:grid-cols-[14rem_1fr] sm:items-end">
-                <Field
-                  name="start_date"
-                  label="Books open on"
-                  type="date"
-                  defaultValue={opening?.start_date ?? todayISO()}
-                  error={err.fields?.start_date}
-                />
+                <DateField name="start_date" label="Books open on" defaultValue={opening?.start_date ?? todayISO()} error={err.fields?.start_date} />
                 <p className="text-sm text-muted-foreground">
                   Transactions before this date cannot be recorded. Pick the day these balances are true, for example
                   the day your salary arrives.
@@ -147,11 +141,11 @@ export function OpeningPage({ user }: { user: User }) {
                     <tbody>
                       {rows.map((a) => (
                         <tr key={a.id}>
-                          <td className="w-20 text-muted-foreground tabular-nums">{a.code}</td>
+                          <td className="hidden w-20 text-muted-foreground tabular-nums md:table-cell">{a.code}</td>
                           <td>
                             <label htmlFor={`amt-${a.id}`}>{a.name}</label>
                           </td>
-                          <td className="w-56">
+                          <td className="w-40 md:w-56">
                             <Input
                               id={`amt-${a.id}`}
                               inputMode="decimal"
@@ -159,7 +153,7 @@ export function OpeningPage({ user }: { user: User }) {
                               value={amounts[a.id] ?? ""}
                               aria-invalid={invalid.includes(a.name)}
                               onInput={(e) => setAmounts((m) => ({ ...m, [a.id]: (e.target as HTMLInputElement).value }))}
-                              className="h-9 rounded-sm text-right tabular-nums"
+                              className="h-11 rounded-sm text-right tabular-nums md:h-9"
                             />
                           </td>
                         </tr>
@@ -178,7 +172,31 @@ export function OpeningPage({ user }: { user: User }) {
                   <a href="/app/contacts" className="text-primary hover:underline">Add them as contacts</a> first, then come back.
                 </p>
               ) : (
-                <TableCard>
+                <>
+                <ul className="grid gap-3 md:hidden">
+                  {contacts.map((c) => (
+                    <li key={c.id} className="grid gap-2 rounded-sm border bg-card p-4">
+                      <p className="font-medium">{c.name}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[perPerson.receivable, perPerson.payable].map((a) =>
+                          a ? (
+                            <label key={a.id} className="grid gap-1 text-xs text-muted-foreground">
+                              {a.code === "1101" ? "Owes you (Rp)" : "You owe (Rp)"}
+                              <Input
+                                inputMode="decimal"
+                                placeholder="0"
+                                value={amounts[key(a.id, c.id)] ?? ""}
+                                onInput={(e) => setAmounts((m) => ({ ...m, [key(a.id, c.id)]: (e.target as HTMLInputElement).value }))}
+                                className="h-11 rounded-sm text-right tabular-nums"
+                              />
+                            </label>
+                          ) : null,
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <TableCard className="hidden md:block">
                   <thead>
                     <tr>
                       <th>Contact</th>
@@ -208,6 +226,7 @@ export function OpeningPage({ user }: { user: User }) {
                     ))}
                   </tbody>
                 </TableCard>
+                </>
               )}
             </section>
 

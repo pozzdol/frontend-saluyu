@@ -1,13 +1,13 @@
 import { CheckCircle2, XCircle } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
+import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { getTrialBalance, type TrialBalance } from "@/lib/api"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
 import { typeDot } from "@/pages/accounts"
+import { DatePicker, fmtDate } from "@/components/picker"
+import { Switch } from "@/components/ui/switch"
 
 // TrialBalancePage replaces the Excel "Neraca" sheet, whose SUM range skipped rows.
 // Every account is listed, so total debit must always equal total credit.
@@ -29,10 +29,14 @@ export function TrialBalancePage() {
     <AppShell
       title="Trial balance"
       actions={
-        <div className="grid gap-1">
-          <Label htmlFor="as_of">As of</Label>
-          <Input id="as_of" type="date" value={asOf} className="h-9 rounded-sm bg-white" onChange={(e) => setAsOf((e.target as HTMLInputElement).value)} />
-        </div>
+        <DatePicker
+          aria-label="Trial balance as of"
+          title="As of"
+          value={asOf}
+          display={`As of ${fmtDate(asOf)}`}
+          onChange={(d) => d && setAsOf(d)}
+          className="w-full justify-center bg-white font-medium md:h-9 md:w-64"
+        />
       }
     >
       <div className="grid gap-4">
@@ -48,15 +52,32 @@ export function TrialBalancePage() {
                 <XCircle /> Not balanced: off by {fmtIDR(Math.abs(tb.total_debit - tb.total_credit))}
               </Badge>
             )}
-            <label className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty((e.target as HTMLInputElement).checked)} className="accent-primary" />
-              Show accounts with zero balance
+            <label className="ml-auto flex min-h-11 items-center gap-2 text-sm text-muted-foreground md:min-h-0">
+              <Switch checked={showEmpty} onCheckedChange={setShowEmpty} />
+              Show zero balances
             </label>
           </div>
         )}
 
         {tb && (
-          <TableCard>
+          <MobileList empty={rows.length === 0 ? "No balances yet." : undefined}>
+            {rows.map((r) => (
+              <MobileItem
+                key={r.account_id}
+                href={`/app/accounts/${r.account_id}`}
+                title={<span className="flex items-center gap-2"><span className={cn("size-2 rounded-full", typeDot[r.type])} />{r.name}</span>}
+                meta={<span className="tabular-nums">{r.code} · {r.debit_balance ? "Debit" : r.credit_balance ? "Credit" : "Zero"}</span>}
+                value={fmtIDR(r.debit_balance || r.credit_balance)}
+              />
+            ))}
+            <li className="grid grid-cols-2 gap-2 bg-[#eaf2ff]/60 px-4 py-3 text-sm font-semibold tabular-nums">
+              <span>Debit {fmtIDR(tb.total_debit)}</span>
+              <span className="text-right">Credit {fmtIDR(tb.total_credit)}</span>
+            </li>
+          </MobileList>
+        )}
+        {tb && (
+          <TableCard className="hidden md:block">
             <thead>
               <tr>
                 <th className="w-24">Code</th>

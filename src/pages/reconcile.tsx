@@ -1,7 +1,8 @@
 import { Loader2, ScanSearch, Wallet } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell } from "@/components/app-shell"
-import { Field, SelectField, Status, toFormError, type FormError } from "@/components/field"
+import { DateField, Field, SelectField, Status, accountOptions, toFormError, type FormError } from "@/components/field"
+import { Segmented } from "@/components/segmented"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ApiError, cashCount, getBalance, listAccounts, reconcile, type Account } from "@/lib/api"
@@ -10,7 +11,6 @@ import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 type Mode = "cash" | "bank"
 
 const perContact = new Set(["1101", "2101"])
-const label = (a: Account) => `${a.code} · ${a.name}`
 
 // ReconcilePage fixes the Excel problem of cash that never went down: count what you really
 // have, and the gap becomes an entry (unrecorded spending, found money, or a bank fee).
@@ -94,21 +94,12 @@ export function ReconcilePage() {
   return (
     <AppShell title="Reconcile">
       <div className="grid max-w-3xl gap-6">
-        <div role="tablist" aria-label="Reconcile type" className="inline-flex w-fit rounded-sm border bg-white p-1">
-          {tabs.map(({ mode: m, label: l, icon: Icon }) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              className={cn("flex items-center gap-1.5 rounded-sm px-4 py-1.5 text-sm text-muted-foreground", mode === m && "bg-[#eaf2ff] font-medium text-primary")}
-            >
-              <Icon className="size-4" />
-              {l}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Reconcile type"
+          value={mode}
+          onChange={setMode}
+          items={tabs.map(({ mode: m, label: l, icon: Icon }) => ({ value: m, label: <><Icon className="size-4" />{l}</> }))}
+        />
 
         <p className="text-sm text-muted-foreground">
           {mode === "cash"
@@ -122,23 +113,10 @@ export function ReconcilePage() {
               <div className="sm:col-span-2">
                 <Status err={err} ok={ok} />
               </div>
-              <SelectField name="account_id" label="Account" value={accountId} onChange={setAccountId} error={err.fields?.account_id}>
-                {targets.map((a) => (
-                  <option key={a.id} value={a.id}>{label(a)}</option>
-                ))}
-              </SelectField>
-              <div className="grid gap-1.5">
-                <label htmlFor="date" className="text-sm font-medium">Date</label>
-                <input
-                  id="date"
-                  type="date"
-                  value={date}
-                  onInput={(e) => setDate((e.target as HTMLInputElement).value)}
-                  className="h-10 rounded-sm border border-input px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                />
-              </div>
+              <SelectField name="account_id" label="Account" value={accountId} onChange={setAccountId} options={accountOptions(targets)} error={err.fields?.account_id} />
+              <DateField name="date" label="Date" value={date} onChange={setDate} />
 
-              <div className="grid gap-1 rounded-sm bg-[#f7f8fa] p-3 text-sm sm:col-span-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2 rounded-sm bg-[#f7f8fa] p-3 text-sm sm:col-span-2">
                 <p><span className="block text-muted-foreground">In your books</span><span className="font-semibold tabular-nums">{book === null ? "…" : fmtIDR(book)}</span></p>
                 <p><span className="block text-muted-foreground">You counted</span><span className="font-semibold tabular-nums">{actualSen >= 0 ? fmtIDR(actualSen) : "—"}</span></p>
                 <p>
@@ -159,16 +137,12 @@ export function ReconcilePage() {
                 error={err.fields?.actual}
               />
               {mode === "bank" && (
-                <SelectField name="counter_account_id" label="Post difference to" value={counterId} onChange={setCounterId} error={err.fields?.counter_account_id}>
-                  <option value="">Choose…</option>
-                  {counters.map((a) => (
-                    <option key={a.id} value={a.id}>{label(a)}</option>
-                  ))}
-                </SelectField>
+                <SelectField name="counter_account_id" label="Post difference to" value={counterId} onChange={setCounterId}
+                  options={accountOptions(counters)} placeholder="Choose…" error={err.fields?.counter_account_id} />
               )}
 
               <div className="sm:col-span-2">
-                <Button type="submit" disabled={busy || diff === null} className="h-10 rounded-sm px-8">
+                <Button type="submit" disabled={busy || diff === null} className="h-10 w-full rounded-sm px-8 md:w-auto">
                   {busy && <Loader2 className="animate-spin" />}
                   {diff === 0 ? "Confirm match" : "Post difference"}
                 </Button>

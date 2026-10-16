@@ -63,7 +63,7 @@ export function DashboardPage() {
         <Status err={err} ok="" />
         {d && (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
               <Tile label="Income" value={fmtIDR(d.income)} tone="text-emerald-700" />
               <Tile label="Expense" value={fmtIDR(d.expense)} tone="text-rose-700" />
               <Tile label="Surplus" value={fmtIDR(d.surplus)} tone={d.surplus < 0 ? "text-rose-700" : undefined} note={d.surplus < 0 ? "Deficit this period" : undefined} />

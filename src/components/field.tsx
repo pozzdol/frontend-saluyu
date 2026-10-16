@@ -1,11 +1,13 @@
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 import type { ComponentChildren } from "preact"
-import { useState } from "preact/hooks"
+import { useEffect, useState } from "preact/hooks"
+import { DatePicker, SelectPicker, type Option } from "@/components/picker"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ApiError } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { ApiError, type Account } from "@/lib/api"
+import { cn, toSen } from "@/lib/utils"
 
 type FieldProps = {
   name: string
@@ -19,6 +21,7 @@ type FieldProps = {
   disabled?: boolean
   value?: string
   onInput?: (e: InputEvent) => void
+  onBlur?: (e: FocusEvent) => void
   inputMode?: "decimal" | "numeric" | "text"
   min?: number | string
   max?: number | string
@@ -34,7 +37,7 @@ export function Field({ name, label, error, ...input }: FieldProps) {
         name={name}
         aria-invalid={!!error}
         aria-describedby={error ? `${name}-error` : undefined}
-        className="h-10 rounded-sm"
+        className="h-11 rounded-sm md:h-10"
         {...input}
       />
       {error && (
@@ -102,35 +105,122 @@ export function Status({ err, ok }: { err: FormError; ok: string }) {
 }
 
 
-// The same look as <Input>, for a native <select>: native gives keyboard and mobile pickers for free.
-export const selectClass =
-  "h-10 w-full rounded-sm border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
+// ---- pickers wired for forms ----
+// Each keeps a hidden input with the field's name, so FormData-based submits keep working.
+
+function FieldShell({ name, label, error, className, children }: { name: string; label: string; error?: string; className?: string; children: ComponentChildren }) {
+  return (
+    <div className={cn("grid gap-1.5", className)}>
+      <Label htmlFor={name}>{label}</Label>
+      {children}
+      {error && (
+        <p id={`${name}-error`} className="text-xs text-destructive">
+          {error[0].toUpperCase() + error.slice(1)}
+        </p>
+      )}
+    </div>
+  )
+}
 
 type SelectFieldProps = {
   name: string
   label: string
+  options: Option[]
   error?: string
-  value?: string
+  value?: string // controlled when set
+  defaultValue?: string
   onChange?: (value: string) => void
-  children: ComponentChildren
+  placeholder?: string
   className?: string
 }
 
-export function SelectField({ name, label, error, value, onChange, children, className }: SelectFieldProps) {
+export function SelectField({ name, label, options, error, value, defaultValue, onChange, placeholder, className }: SelectFieldProps) {
+  const [own, setOwn] = useState(defaultValue ?? options[0]?.value ?? "")
+  // An uncontrolled field whose options changed (e.g. another kind) falls back to the first one.
+  useEffect(() => {
+    if (value === undefined && !options.some((o) => o.value === own)) setOwn(options[0]?.value ?? "")
+  }, [options])
+  const current = value ?? own
   return (
-    <div className={cn("grid gap-1.5", className)}>
-      <Label htmlFor={name}>{label}</Label>
-      <select
+    <FieldShell name={name} label={label} error={error} className={className}>
+      <SelectPicker
         id={name}
-        name={name}
-        value={value}
-        onChange={(e) => onChange?.((e.target as HTMLSelectElement).value)}
-        aria-invalid={!!error}
-        className={selectClass}
-      >
-        {children}
-      </select>
-      {error && <p className="text-xs text-destructive">{error[0].toUpperCase() + error.slice(1)}</p>}
-    </div>
+        title={label}
+        value={current}
+        options={options}
+        placeholder={placeholder}
+        invalid={!!error}
+        onChange={(v) => (setOwn(v), onChange?.(v))}
+      />
+      <input type="hidden" name={name} value={current} />
+    </FieldShell>
   )
 }
+
+type DateFieldProps = {
+  name: string
+  label: string
+  error?: string
+  value?: string
+  defaultValue?: string
+  onChange?: (value: string) => void
+  clearable?: boolean
+  placeholder?: string
+  className?: string
+}
+
+export function DateField({ name, label, error, value, defaultValue, onChange, clearable, placeholder, className }: DateFieldProps) {
+  const [own, setOwn] = useState(defaultValue ?? "")
+  const current = value ?? own
+  return (
+    <FieldShell name={name} label={label} error={error} className={className}>
+      <DatePicker
+        id={name}
+        title={label}
+        value={current}
+        clearable={clearable}
+        placeholder={placeholder}
+        invalid={!!error}
+        onChange={(v) => (setOwn(v), onChange?.(v))}
+      />
+      <input type="hidden" name={name} value={current} />
+    </FieldShell>
+  )
+}
+
+const plain = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })
+
+// AmountField takes rupiah as people type it and tidies it to "25.000" when they leave the field.
+export function AmountField(props: Omit<FieldProps, "type" | "inputMode">) {
+  return (
+    <Field
+      {...props}
+      inputMode="decimal"
+      onBlur={(e) => {
+        const el = e.currentTarget as HTMLInputElement
+        const sen = toSen(el.value)
+        if (el.value && sen >= 0) el.value = plain.format(sen / 100)
+      }}
+    />
+  )
+}
+
+// CheckboxField is a Radix checkbox with its label; it submits "on" when checked, like HTML.
+export function CheckboxField({ name, label, hint, checked, onChange }: { name: string; label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label htmlFor={name} className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm md:min-h-0">
+      <Checkbox id={name} checked={checked} onCheckedChange={(v) => onChange(v === true)} className="mt-0.5 size-5 rounded-[3px]" />
+      <span>
+        <span className="font-medium">{label}</span>
+        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+      </span>
+      {checked && <input type="hidden" name={name} value="on" />}
+    </label>
+  )
+}
+
+export type { Option }
+
+// accountOptions turns accounts into picker options grouped by type, e.g. "1001 · Bank" under Asset.
+export const accountOptions = (list: Account[]): Option[] =>
+  list.map((a) => ({ value: a.id, label: `${a.code} · ${a.name}`, hint: a.category, group: a.type }))
