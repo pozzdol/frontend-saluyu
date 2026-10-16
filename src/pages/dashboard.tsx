@@ -8,6 +8,7 @@ import { cn, fmtIDR } from "@/lib/utils"
 import { Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import type { ComponentChildren } from "preact"
+import { DueBills } from "@/pages/cards"
 
 function Tile({ label, value, note, tone }: { label: ComponentChildren; value: string; note?: string; tone?: string }) {
   return (
@@ -67,6 +68,7 @@ export function DashboardPage() {
     <AppShell title={t("dash.title")} actions={<PeriodPicker period={d?.period} onChange={setDate} />}>
       <div className="grid gap-6">
         <Status err={err} ok="" />
+        <DueBills />
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">

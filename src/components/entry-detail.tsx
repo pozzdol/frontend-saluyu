@@ -69,22 +69,30 @@ function SimpleEdit({ e, accounts, onDone }: { e: Entry; accounts: Account[]; on
   const kind = e.kind as PostEntryInput["kind"]
   const rule = kinds[kind]
   const active = accounts.filter((a) => (a.is_active || e.lines.some((l) => l.account_id === a.id)) && !perContact(a.code))
+  const type = (id: string) => accounts.find((a) => a.id === id)?.type
+  // A transfer with a fee has a second debit line on an expense: that one is the fee.
+  const feeLine = kind === "transfer" ? e.lines.find((l) => l.debit > 0 && type(l.account_id) === "Expense") : undefined
+  const feeAccount = feeLine ? accounts.find((a) => a.id === feeLine.account_id) : accounts.find((a) => a.code === "5107")
   const [from, setFrom] = useState(e.lines.find((l) => l.credit > 0)?.account_id ?? "")
-  const [to, setTo] = useState(e.lines.find((l) => l.debit > 0)?.account_id ?? "")
+  const [to, setTo] = useState(e.lines.find((l) => l.debit > 0 && l !== feeLine)?.account_id ?? "")
   const form = useForm(async (v) => {
     const amount = toSen(v.amount)
     if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
-    const r = await editEntry(e.id, { kind, entry_date: v.entry_date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(e.period_date && { next_period: true }) })
+    const fee = kind === "transfer" && v.fee ? toSen(v.fee) : 0
+    const r = await editEntry(e.id, { kind, entry_date: v.entry_date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(e.period_date && { next_period: true }), ...(fee > 0 && feeAccount && { fee, fee_account_id: feeAccount.id }) })
     onDone(r.pending)
     return ""
   })
   return (
     <form onSubmit={form.onSubmit} noValidate className="grid gap-4">
       <Status err={form.err} ok="" />
-      <AmountField name="amount" label={t("common.amount")} defaultValue={rupiah(total(e.lines))} error={form.err.fields?.amount} />
+      <AmountField name="amount" label={t("common.amount")} defaultValue={rupiah(total(e.lines) - (feeLine?.debit ?? 0))} error={form.err.fields?.amount} />
       <DateField name="entry_date" label={t("common.date")} defaultValue={e.entry_date} error={form.err.fields?.entry_date} />
-      <SelectField name="from" label={t(rule.fromLabel)} value={from} onChange={setFrom} options={accountOptions(active.filter((a) => a.type === rule.from))} error={form.err.fields?.from_account_id} />
-      <SelectField name="to" label={t(rule.toLabel)} value={to} onChange={setTo} options={accountOptions(active.filter((a) => a.type === rule.to))} error={form.err.fields?.to_account_id} />
+      <SelectField name="from" label={t(rule.fromLabel)} value={from} onChange={setFrom} options={accountOptions(active.filter(rule.from))} error={form.err.fields?.from_account_id} />
+      <SelectField name="to" label={t(rule.toLabel)} value={to} onChange={setTo} options={accountOptions(active.filter(rule.to))} error={form.err.fields?.to_account_id} />
+      {kind === "transfer" && feeAccount && (
+        <AmountField name="fee" label={t("tx.fee")} defaultValue={feeLine ? rupiah(feeLine.debit) : ""} placeholder="0" error={form.err.fields?.fee} />
+      )}
       <Field name="description" label={t("common.note")} defaultValue={e.description} error={form.err.fields?.description} />
       <SaveButton busy={form.busy} />
     </form>
@@ -209,6 +217,8 @@ function View({ d, onEdit, onDelete }: { d: EntryDetail; onEdit: () => void; onD
   // An approved shared loan lives in two books: deleting it would leave the other one wrong.
   const locked = d.mirrored || d.loan_status === "approved"
   const person = e.lines.find((l) => l.contact_name)?.contact_name
+  // Installment entries follow the schedule: delete and pay again instead of editing.
+  const scheduled = e.kind === "borrowing" || e.kind === "installment"
   return (
     <div className="grid gap-4 pb-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -240,6 +250,8 @@ function View({ d, onEdit, onDelete }: { d: EntryDetail; onEdit: () => void; onD
       <div className="flex gap-2">
         {e.kind === "opening" ? (
           <Button asChild variant="outline" className="flex-1 rounded-sm"><a href="/app/opening"><Pencil /> {t("common.edit")}</a></Button>
+        ) : scheduled ? (
+          <p className="flex-1 self-center text-xs text-muted-foreground">{t("ed.scheduled")}</p>
         ) : (
           <Button variant="outline" className="flex-1 rounded-sm" disabled={d.change_pending} onClick={onEdit}><Pencil /> {t("common.edit")}</Button>
         )}

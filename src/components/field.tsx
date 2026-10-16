@@ -235,4 +235,4 @@ export type { Option }
 
 // accountOptions turns accounts into picker options grouped by type, e.g. "1001 · Bank" under Asset.
 export const accountOptions = (list: Account[]): Option[] =>
-  list.map((a) => ({ value: a.id, label: `${a.code} · ${a.name}`, hint: a.category, group: a.type }))
+  list.map((a) => ({ value: a.id, label: `${a.code} · ${a.name}`, hint: a.category, group: t(`type.${a.type}`) }))

@@ -8,18 +8,19 @@ import { toast } from "@/components/toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { deleteEntry, listAccounts, perContact, postEntry, type Account, type PostEntryInput } from "@/lib/api"
+import { deleteEntry, isMoney, listAccounts, perContact, postEntry, type Account, type PostEntryInput } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
 
 type Kind = PostEntryInput["kind"]
 
-// The wallet is the money account; the tile grid is what the money went to or came from.
-const shape: Record<Kind, { tiles: Account["type"]; walletIsFrom: boolean }> = {
-  expense: { tiles: "Expense", walletIsFrom: true },
-  income: { tiles: "Revenue", walletIsFrom: false },
-  transfer: { tiles: "Asset", walletIsFrom: true },
+// The wallet is the money account (cards too, except for income); the tile grid is what the
+// money went to or came from. A transfer can pay off a card or loan.
+const shape: Record<Kind, { tile: (a: Account) => boolean; wallet: (a: Account) => boolean; walletIsFrom: boolean }> = {
+  expense: { tile: (a) => a.type === "Expense", wallet: isMoney, walletIsFrom: true },
+  income: { tile: (a) => a.type === "Revenue", wallet: (a) => a.type === "Asset", walletIsFrom: false },
+  transfer: { tile: (a) => a.type === "Asset" || a.type === "Liability", wallet: isMoney, walletIsFrom: true },
 }
 
 const pad: PadKey[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "000", "0", "back"]
@@ -46,7 +47,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
     listAccounts()
       .then((list) => {
         setAccounts(list)
-        const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code))
+        const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code)) // default: never a card
         setWallet(wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
       })
       .catch((e) => setErr(toFormError(e)))
@@ -64,14 +65,21 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   }, [])
 
   const active = accounts?.filter((a) => a.is_active && !perContact(a.code)) ?? []
-  const wallets = active.filter((a) => a.type === "Asset")
+  const wallets = active.filter(shape[kind].wallet)
   const tiles = active
-    .filter((a) => a.type === shape[kind].tiles && a.id !== wallet)
+    .filter((a) => shape[kind].tile(a) && a.id !== wallet)
     .sort((a, b) => b.uses_30d - a.uses_30d || a.code.localeCompare(b.code))
   const today = todayISO()
   const yesterday = dayBefore(today)
   const amount = toSenDigits(digits)
   const tileAccount = tiles.find((a) => a.id === tile)
+
+  function switchKind(k: Kind) {
+    setKind(k)
+    setTile("")
+    // Income cannot land on a card: fall back to the first account that fits.
+    if (!active.some((a) => a.id === wallet && shape[k].wallet(a))) setWallet(active.find(shape[k].wallet)?.id ?? "")
+  }
 
   async function save() {
     if (!tileAccount) return
@@ -103,7 +111,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
       <Segmented
         label={t("tx.type")}
         value={kind}
-        onChange={(k) => (setKind(k), setTile(""))}
+        onChange={switchKind}
         items={[
           { value: "expense", label: <><ArrowUpRight className="size-4" />{t("qa.out")}</> },
           { value: "income", label: <><ArrowDownLeft className="size-4" />{t("qa.in")}</> },

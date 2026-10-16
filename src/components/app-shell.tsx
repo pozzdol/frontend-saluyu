@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeftRight, BookOpen, CreditCard, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -15,6 +15,7 @@ const nav: { href: string; label: Key; icon: typeof LayoutDashboard }[] = [
   { href: "/app/dashboard", label: "nav.dashboard", icon: LayoutDashboard },
   { href: "/app/transactions", label: "nav.transactions", icon: ArrowLeftRight },
   { href: "/app/budgets", label: "nav.budgets", icon: PiggyBank },
+  { href: "/app/cards", label: "nav.cards", icon: CreditCard },
   { href: "/app/contacts", label: "nav.contacts", icon: Users },
   { href: "/app/groups", label: "nav.groups", icon: UsersRound },
   { href: "/app/reports", label: "nav.reports", icon: FileText },
@@ -134,8 +135,9 @@ function VerifyBanner({ email }: { email: string }) {
     setState(await resendVerification().then(() => "sent" as const, () => "failed" as const))
   }
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:px-8">
-      <MailWarning className="size-4 shrink-0" />
+    <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:items-center lg:px-8">
+      <MailWarning className="mt-0.5 size-4 shrink-0 lg:mt-0" />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
       <span className="mr-auto">{t("verify.banner", { email })}</span>
       {state === "sent" ? (
         <span role="status">{t("verify.sent")}</span>
@@ -144,6 +146,7 @@ function VerifyBanner({ email }: { email: string }) {
           {state === "failed" ? t("verify.retry") : t("verify.resend")}
         </button>
       )}
+      </div>
     </div>
   )
 }

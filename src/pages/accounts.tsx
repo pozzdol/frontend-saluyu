@@ -39,7 +39,7 @@ function NewAccount({ onCreated }: { onCreated: () => void }) {
           <div className="md:col-span-5">
             <Status err={form.err} ok={form.ok} />
           </div>
-          <Field name="code" label={t("acct.code")} placeholder="5108" error={form.err.fields?.code} />
+          <Field name="code" label={t("acct.code")} placeholder="5109" error={form.err.fields?.code} />
           <Field name="name" label={t("acct.name")} placeholder="Kopi" error={form.err.fields?.name} />
           <SelectField name="type" label={t("acct.type")} value={type} onChange={(v) => setType(v as AccountType)} error={form.err.fields?.type}
             options={typeOrder.map((ty) => ({ value: ty, label: t(`type.${ty}`) }))} />

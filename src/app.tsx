@@ -17,6 +17,7 @@ import { ReportsPage } from "@/pages/reports"
 import { ContactPage, ContactsPage } from "@/pages/contacts"
 import { GroupsPage } from "@/pages/groups"
 import { WelcomePage } from "@/pages/welcome"
+import { CardPage, CardsPage, PlanPage } from "@/pages/cards"
 import { PrivacyPage } from "@/pages/privacy"
 import { browserLocale, setLocale, useT } from "@/lib/i18n"
 
@@ -67,6 +68,9 @@ const Reports = protect(ReportsPage)
 const Contacts = protect(ContactsPage)
 const Groups = protect(GroupsPage)
 const Welcome = protect(WelcomePage)
+const Cards = protect(CardsPage)
+const CardDetail = protect(({ params }: { params: { id: string } }) => <CardPage id={params.id} />)
+const PlanDetail = protect(({ params }: { params: { id: string } }) => <PlanPage id={params.id} />)
 const Privacy = protect(PrivacyPage)
 const ContactDetail = protect(({ params }: { params: { id: string } }) => <ContactPage id={params.id} />)
 
@@ -99,6 +103,9 @@ export function App() {
         <Route path="/app/trial-balance" component={TrialBalance} />
         <Route path="/app/opening" component={Opening} />
         <Route path="/app/welcome" component={Welcome} />
+        <Route path="/app/cards" component={Cards} />
+        <Route path="/app/cards/:id" component={CardDetail} />
+        <Route path="/app/installments/:id" component={PlanDetail} />
         <Route path="/app/privacy" component={Privacy} />
         <Route path="/app/reconcile" component={Reconcile} />
         <Route path="/app/contacts" component={Contacts} />

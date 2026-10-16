@@ -198,9 +198,15 @@ export type Account = {
   icon: string // "" = default for the type
   color: string
   uses_30d: number // entries in the last 30 days; Quick Add sorts categories by it
+  kind: "general" | "credit_card" | "paylater" | "loan"
 }
 
-export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment"
+// isCard: a credit card or paylater pays for things like a bank account, and runs up a bill.
+export const isCard = (a: Account) => a.kind === "credit_card" || a.kind === "paylater"
+// isMoney: what pays for an expense or starts a transfer.
+export const isMoney = (a: Account) => (a.type === "Asset" || isCard(a)) && !perContact(a.code)
+
+export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment" | "borrowing" | "installment"
 
 export type Line = {
   account_id: string
@@ -280,6 +286,8 @@ export type PostEntryInput = {
   to_account_id: string
   description: string
   next_period?: boolean
+  fee?: number // transfers only: a bank charge paid from the same source
+  fee_account_id?: string
 }
 
 export const postEntry = (body: PostEntryInput) =>
@@ -574,3 +582,71 @@ export function useInboxCount() {
     () => inboxCount,
   )
 }
+
+// ---- Cards and installments (phase 8) ----
+
+export type CardSettings = { statement_day: number; due_day: number; credit_limit: number; min_payment_pct: number }
+export type Card = CardSettings & { account: Account }
+export type CardLine = LedgerRow
+export type Statement = {
+  start: string
+  end: string
+  due_date: string
+  opening: number
+  charges: number
+  payments: number
+  total: number
+  minimum: number
+  paid_since: number
+  remaining: number
+  min_remaining: number
+  status: "paid" | "due" | "min_paid" | "overdue"
+  lines?: CardLine[]
+}
+export type CardSummary = Card & {
+  owed: number
+  available: number | null
+  last: Statement
+  current: { start: string; end: string; charges: number; payments: number; lines?: CardLine[] }
+}
+
+export const listCards = () => authed<{ data: CardSummary[] }>("/cards").then((r) => r.data)
+export const getCard = (id: string) => authed<{ data: CardSummary }>(`/cards/${id}`).then((r) => r.data)
+export const createCard = (body: CardSettings & { name: string; kind: "credit_card" | "paylater" }) =>
+  authed<{ data: CardSummary }>("/cards", json("POST", body)).then((r) => r.data)
+export const updateCard = (id: string, body: CardSettings) =>
+  authed<{ data: CardSummary }>(`/cards/${id}`, json("PATCH", body)).then((r) => r.data)
+
+export type ScheduleRow = { seq: number; due_date: string; principal: number; interest: number; payment: number; remaining: number }
+export type Plan = {
+  id: string
+  account: Account
+  interest_account_id: string
+  principal: number
+  annual_rate_bp: number
+  tenor_months: number
+  method: "flat" | "annuity"
+  first_due_date: string
+  paid_count: number
+  remaining: number
+  total_interest: number
+  next: ScheduleRow | null
+  rows?: (ScheduleRow & { paid: { seq: number; entry_id: string; entry_no: number } | null })[]
+}
+export type PlanInput = {
+  name: string
+  principal: number
+  annual_rate: number
+  tenor_months: number
+  method: "flat" | "annuity"
+  first_due_date: string
+  received_into_id?: string
+  entry_date?: string
+}
+
+export const listPlans = () => authed<{ data: Plan[] }>("/installments").then((r) => r.data)
+export const getPlan = (id: string) => authed<{ data: Plan }>(`/installments/${id}`).then((r) => r.data)
+export const createPlan = (body: PlanInput) => authed<{ data: Plan }>("/installments", json("POST", body)).then((r) => (entriesChanged(), r.data))
+export const payInstallment = (id: string, body: { from_account_id: string; entry_date: string }) =>
+  authed<{ data: Plan }>(`/installments/${id}/pay`, json("POST", body)).then((r) => (entriesChanged(), r.data))
+export const deletePlan = (id: string) => authed<void>(`/installments/${id}`, { method: "DELETE" })

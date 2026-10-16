@@ -11,12 +11,12 @@ import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   ApiError,
+  isMoney,
   perContact,
   listAccounts,
   listEntries,
   postEntry,
   type Account,
-  type AccountType,
   type Entry,
   type EntryQuery,
   type PostEntryInput,
@@ -35,10 +35,12 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 type FormKind = PostEntryInput["kind"]
 
 // Which account types each form moves money between. Mirrors kindRules in the Go service.
-export const kinds: Record<FormKind, { label: Key; icon: typeof ArrowUpRight; from: AccountType; to: AccountType; fromLabel: Key; toLabel: Key }> = {
-  expense: { label: "kind.expense", icon: ArrowUpRight, from: "Asset", to: "Expense", fromLabel: "tx.paidFrom", toLabel: "tx.category" },
-  income: { label: "kind.income", icon: ArrowDownLeft, from: "Revenue", to: "Asset", fromLabel: "tx.source", toLabel: "tx.receivedInto" },
-  transfer: { label: "kind.transfer", icon: ArrowLeftRight, from: "Asset", to: "Asset", fromLabel: "tx.from", toLabel: "tx.to" },
+// Cards pay like a bank account; a transfer can also pay off a card or loan.
+type Fits = (a: Account) => boolean
+export const kinds: Record<FormKind, { label: Key; icon: typeof ArrowUpRight; from: Fits; to: Fits; fromLabel: Key; toLabel: Key }> = {
+  expense: { label: "kind.expense", icon: ArrowUpRight, from: isMoney, to: (a) => a.type === "Expense", fromLabel: "tx.paidFrom", toLabel: "tx.category" },
+  income: { label: "kind.income", icon: ArrowDownLeft, from: (a) => a.type === "Revenue", to: (a) => a.type === "Asset", fromLabel: "tx.source", toLabel: "tx.receivedInto" },
+  transfer: { label: "kind.transfer", icon: ArrowLeftRight, from: isMoney, to: (a) => a.type === "Asset" || a.type === "Liability", fromLabel: "tx.from", toLabel: "tx.to" },
 }
 
 export const kindBadge: Record<string, string> = {
@@ -50,6 +52,8 @@ export const kindBadge: Record<string, string> = {
   adjustment: "bg-slate-100 text-slate-700",
   loan: "bg-orange-50 text-orange-700",
   repayment: "bg-teal-50 text-teal-700",
+  borrowing: "bg-amber-50 text-amber-800",
+  installment: "bg-indigo-50 text-indigo-700",
 }
 
 function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
@@ -58,8 +62,9 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
   const rule = kinds[kind]
   // 1101/2101 need a person: those go through the Contacts page instead.
   const active = accounts.filter((a) => a.is_active && !perContact(a.code))
-  const fromOptions = active.filter((a) => a.type === rule.from)
-  const toOptions = active.filter((a) => a.type === rule.to)
+  const fromOptions = active.filter(rule.from)
+  const toOptions = active.filter(rule.to)
+  const feeAccount = accounts.find((a) => a.code === "5107")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [date, setDate] = useState(todayISO())
@@ -83,10 +88,14 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
   const form = useForm(async (v, el) => {
     const amount = toSen(v.amount)
     if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
-    await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }) })
+    const fee = kind === "transfer" && v.fee ? toSen(v.fee) : 0
+    if (!(fee >= 0)) throw new ApiError(400, "validation failed", undefined, "validation", { fee: "invalid" })
+    await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }), ...(fee > 0 && feeAccount && { fee, fee_account_id: feeAccount.id }) })
     // Keep date and accounts for the next entry: people usually log several in a row.
     ;(el.elements.namedItem("amount") as HTMLInputElement).value = ""
     ;(el.elements.namedItem("description") as HTMLInputElement).value = ""
+    const feeInput = el.elements.namedItem("fee") as HTMLInputElement | null
+    if (feeInput) feeInput.value = ""
     setNextPeriod(false)
     onPosted()
     return t("tx.savedKind", { kind: t(rule.label) })
@@ -120,6 +129,11 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
           <div className="md:col-span-3">
             <Field name="description" label={t("common.note")} placeholder={kind === "income" ? t("tx.notePlaceholderIncome") : t("tx.notePlaceholderExpense")} error={err.fields?.description} />
           </div>
+          {kind === "transfer" && feeAccount && (
+            <div className="md:col-span-3">
+              <AmountField name="fee" label={t("tx.fee")} placeholder="0" error={err.fields?.fee} />
+            </div>
+          )}
           {showNext && (
             <div className="md:col-span-6">
               <CheckboxField
@@ -151,7 +165,7 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
 // amountOf is the size of an entry: its total debits (equal to its total credits).
 const amountOf = (e: Entry) => e.lines.reduce((s, l) => s + l.debit, 0)
 
-const kinds8 = ["income", "expense", "transfer", "loan", "repayment", "opening", "cash_count", "adjustment"] as const
+const kinds8 = ["income", "expense", "transfer", "loan", "repayment", "opening", "cash_count", "adjustment", "borrowing", "installment"] as const
 const kindOptions = () => [{ value: "", label: t("tx.allTypes") }, ...kinds8.map((k) => ({ value: k, label: t(`kind.${k}`) }))]
 
 // JournalFilters sit inline on desktop; on phones they live behind a "Filters" button in a
