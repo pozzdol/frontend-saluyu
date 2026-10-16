@@ -9,16 +9,21 @@ import { Transactions } from "@/pages/transactions"
 import { Accounts } from "@/pages/accounts"
 import { LedgerPage } from "@/pages/ledger"
 import { TrialBalancePage } from "@/pages/trial-balance"
+import { OpeningPage } from "@/pages/opening"
+import { ReconcilePage } from "@/pages/reconcile"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
   return function Protected(props: P) {
     const { user, ready } = useAuth()
-    const { route } = useLocation()
+    const { route, path } = useLocation()
+    // Books must be opened before anything else in the console makes sense.
+    const needsOpening = !!user && !user.start_date && path.startsWith("/app") && path !== "/app/opening"
     useEffect(() => {
       if (ready && !user) route("/login", true)
-    }, [ready, user])
-    return user ? <Page {...props} user={user} /> : null
+      else if (needsOpening) route("/app/opening", true)
+    }, [ready, user, needsOpening])
+    return user && !needsOpening ? <Page {...props} user={user} /> : null
   }
 }
 
@@ -45,6 +50,8 @@ const TransactionsPage = protect(Transactions)
 const AccountsPage = protect(Accounts)
 const Ledger = protect(({ params }: { params: { id: string } }) => <LedgerPage id={params.id} />)
 const TrialBalance = protect(TrialBalancePage)
+const Opening = protect(OpeningPage)
+const Reconcile = protect(ReconcilePage)
 
 export function App() {
   return (
@@ -59,6 +66,8 @@ export function App() {
         <Route path="/app/accounts" component={AccountsPage} />
         <Route path="/app/accounts/:id" component={Ledger} />
         <Route path="/app/trial-balance" component={TrialBalance} />
+        <Route path="/app/opening" component={Opening} />
+        <Route path="/app/reconcile" component={Reconcile} />
         <Route default component={NotFound} />
       </Router>
     </LocationProvider>

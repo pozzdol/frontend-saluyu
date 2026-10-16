@@ -17,6 +17,9 @@ type FieldProps = {
   placeholder?: string
   required?: boolean
   disabled?: boolean
+  value?: string
+  onInput?: (e: InputEvent) => void
+  inputMode?: "decimal" | "numeric" | "text"
 }
 
 // Field shows the server's per-field message, e.g. {"email": "must be a valid email"}.

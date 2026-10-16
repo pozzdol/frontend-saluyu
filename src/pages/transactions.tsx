@@ -33,6 +33,9 @@ export const kindBadge: Record<string, string> = {
   income: "bg-emerald-50 text-emerald-700",
   expense: "bg-rose-50 text-rose-700",
   transfer: "bg-[#eaf2ff] text-primary",
+  opening: "bg-violet-50 text-violet-700",
+  cash_count: "bg-amber-50 text-amber-700",
+  adjustment: "bg-slate-100 text-slate-700",
 }
 
 const label = (a: Account) => `${a.code} · ${a.name}`

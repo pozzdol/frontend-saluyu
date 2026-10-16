@@ -6,6 +6,7 @@ export type User = {
   email: string
   img_url: string
   is_active: boolean
+  start_date: string | null // null until the opening balance is set
 }
 
 type Session = { access_token: string; user: User }
@@ -223,3 +224,27 @@ export const getLedger = (id: string, params: { from?: string; to?: string }) =>
 
 export const getTrialBalance = (asOf: string) =>
   authed<{ data: TrialBalance }>(`/reports/trial-balance${query({ as_of: asOf })}`).then((r) => r.data)
+
+// ---- Opening balance & reconciliation (phase 2) ----
+
+export type Opening = { start_date: string | null; entry: Entry | null; editable: boolean }
+
+export const getOpening = () => authed<{ data: Opening }>("/opening").then((r) => r.data)
+
+export async function setOpening(body: { start_date: string; items: { account_id: string; amount: number }[] }) {
+  const o = await authed<{ data: Opening }>("/opening", json("PUT", body)).then((r) => r.data)
+  if (state.user) setUser({ ...state.user, start_date: o.start_date }) // unlocks the console
+  return o
+}
+
+export const getBalance = (accountId: string, date: string) =>
+  authed<{ data: { balance: number } }>(`/accounts/${accountId}/balance${query({ date })}`).then((r) => r.data.balance)
+
+export type ReconcileInput = { account_id: string; date: string; actual: number; counter_account_id?: string }
+export type ReconcileResult = { book: number; actual: number; diff: number; entry: Entry | null }
+
+export const cashCount = (body: ReconcileInput) =>
+  authed<{ data: ReconcileResult }>("/cash-counts", json("POST", body)).then((r) => r.data)
+
+export const reconcile = (body: ReconcileInput) =>
+  authed<{ data: ReconcileResult }>("/reconciliations", json("POST", body)).then((r) => r.data)
