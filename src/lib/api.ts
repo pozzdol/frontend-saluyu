@@ -540,6 +540,8 @@ export const inviteToGroup = (groupId: string, email: string) =>
   authed<{ data: PendingInvite }>(`/groups/${groupId}/invites`, json("POST", { email })).then((r) => r.data)
 export const cancelInvite = (groupId: string, inviteId: string) =>
   authed<void>(`/groups/${groupId}/invites/${inviteId}`, { method: "DELETE" })
+export const renameGroup = (groupId: string, name: string) =>
+  authed<{ data: Group }>(`/groups/${groupId}`, json("PATCH", { name })).then((r) => r.data)
 export const leaveGroup = (groupId: string) => authed<void>(`/groups/${groupId}/leave`, { method: "POST" })
 export const groupSummary = (groupId: string, date: string) =>
   authed<{ data: MemberSummary[] }>(`/groups/${groupId}/summary${query({ date })}`).then((r) => r.data)

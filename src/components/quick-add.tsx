@@ -1,4 +1,5 @@
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Delete, Loader2, Plus } from "lucide-react"
+import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AccountIcon } from "@/components/account-icon"
 import { Status, accountOptions, toFormError, type FormError } from "@/components/field"
@@ -40,6 +41,9 @@ const dayBefore = (iso: string) => new Date(Date.parse(iso) - 864e5).toISOString
 
 function QuickAddForm({ onDone }: { onDone: () => void }) {
   const t = useT()
+  // Opened from a card's page, the card is what you are paying with.
+  const { path } = useLocation()
+  const here = path.match(/^\/app\/cards\/([^/]+)$/)?.[1]
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [kind, setKind] = useState<Kind>("expense")
   const [digits, setDigits] = useState("")
@@ -57,7 +61,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
     const use = (list: Account[]) => {
       setAccounts(list)
       const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code)) // default: never a card
-      setWallet(wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
+      const card = here && list.find((a) => a.id === here && a.is_active)
+      setWallet(card ? card.id : wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
     }
     // Offline, the accounts from the last successful load still let you record.
     listAccounts()
@@ -89,6 +94,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   const yesterday = dayBefore(today)
   const amount = toSenDigits(digits)
   const tileAccount = tiles.find((a) => a.id === tile)
+  useEffect(() => setErr({}), [digits, tile, kind])
+  const walletLabel = kind === "transfer" ? t("tx.from") : kind === "income" ? t("tx.receivedInto") : t("tx.paidFrom")
 
   function switchKind(k: Kind) {
     setKind(k)
@@ -98,7 +105,9 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   }
 
   async function save() {
-    if (!tileAccount) return
+    // Save stays enabled and says what is missing, instead of a grey button with no reason.
+    if (amount <= 0) return setErr({ message: t("qa.needAmount") })
+    if (!tileAccount) return setErr({ message: t(kind === "transfer" ? "qa.needTo" : kind === "income" ? "qa.needSource" : "qa.needCategory") })
     setBusy(true)
     setErr({})
     const [from, to] = shape[kind].walletIsFrom ? [wallet, tile] : [tile, wallet]
@@ -150,8 +159,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
       <Status err={err} ok="" />
 
       <div className="grid gap-1 text-sm">
-        <span className="text-muted-foreground">{shape[kind].walletIsFrom ? t("tx.paidFrom") : t("tx.receivedInto")}</span>
-        <SelectPicker aria-label={t("qa.wallet")} title={t("qa.wallet")} value={wallet} onChange={(v) => (setWallet(v), v === tile && setTile(""))} options={accountOptions(wallets)} />
+        <span className="text-muted-foreground">{walletLabel}</span>
+        <SelectPicker aria-label={walletLabel} title={walletLabel} value={wallet} onChange={(v) => (setWallet(v), v === tile && setTile(""))} options={accountOptions(wallets)} />
       </div>
 
       <fieldset>
@@ -162,7 +171,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
           <div className="grid grid-cols-4 gap-2">
             {tiles.map((a) => (
               <button key={a.id} type="button" aria-pressed={a.id === tile} onClick={() => (setTile(a.id), setTilePicked(true))}
-                className={cn("grid min-h-20 justify-items-center content-start gap-1.5 rounded-sm border p-2 text-center text-xs leading-tight",
+                className={cn("grid min-h-20 justify-items-center content-start gap-1.5 rounded-sm border p-2 text-center text-xs leading-tight [@media(max-height:760px)]:min-h-16 [@media(max-height:760px)]:p-1.5",
                   a.id === tile ? "border-primary bg-[#eaf2ff] ring-1 ring-primary" : "hover:bg-muted")}>
                 <AccountIcon account={a} />
                 <span className="line-clamp-2 break-words">{a.name}</span>
@@ -195,13 +204,13 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
         {pad.map((k) => (
           <button key={k} type="button" onClick={() => setDigits((d) => press(d, k))}
             aria-label={k === "back" ? t("qa.backspace") : undefined}
-            className="grid h-12 place-items-center rounded-sm bg-muted text-xl font-medium tabular-nums active:bg-[#dbe7fb] md:h-11 md:text-lg">
+            className="grid h-12 place-items-center rounded-sm bg-muted text-xl font-medium tabular-nums active:bg-[#dbe7fb] md:h-11 md:text-lg [@media(max-height:760px)]:h-10">
             {k === "back" ? <Delete className="size-5" /> : k}
           </button>
         ))}
       </div>
 
-      <Button className="h-12 rounded-sm text-base" disabled={busy || amount <= 0 || !tileAccount || !wallet} onClick={save}>
+      <Button className="h-12 rounded-sm text-base" disabled={busy || !wallet} onClick={save}>
         {busy && <Loader2 className="animate-spin" />}
         {t("common.save")}
       </Button>

@@ -1,4 +1,3 @@
-import { ArrowLeft } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
@@ -11,6 +10,7 @@ import { kindBadge } from "@/pages/transactions"
 import { DatePicker, fmtDate } from "@/components/picker"
 import { Info, Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
+import { EntryDetailSheet } from "@/components/entry-detail"
 
 // LedgerPage is one account's history with a running balance (the Excel "Buku Besar" sheet).
 export function LedgerPage({ id }: { id: string }) {
@@ -18,11 +18,13 @@ export function LedgerPage({ id }: { id: string }) {
   const [range, setRange] = useState({ from: "", to: "" })
   const [ledger, setLedger] = useState<Ledger | null>(null)
   const [err, setErr] = useState<FormError>({})
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     setErr({})
     getLedger(id, range).then(setLedger).catch((e) => setErr(toFormError(e)))
-  }, [id, range])
+  }, [id, range, reload])
 
   const a = ledger?.account
   const money = (n: number) => (n === 0 ? <span className="text-muted-foreground">—</span> : fmtIDR(n))
@@ -31,11 +33,7 @@ export function LedgerPage({ id }: { id: string }) {
     <AppShell
       title={a ? `${a.code} · ${a.name}` : t("ledger.title")}
       term="ledger"
-      actions={
-        <a href="/app/accounts" className="flex items-center gap-1 text-sm text-primary hover:underline">
-          <ArrowLeft className="size-4" /> All accounts
-        </a>
-      }
+      back={{ href: "/app/accounts", label: t("nav.accounts") }}
     >
       <div className="grid gap-4">
         <Status err={err} ok="" />
@@ -66,8 +64,9 @@ export function LedgerPage({ id }: { id: string }) {
             {ledger.rows.map((r, i) => (
               <MobileItem
                 key={`${r.entry_id}-${i}`}
+                onClick={() => setOpenId(r.entry_id)}
                 title={r.description || r.counter}
-                meta={<><span>{fmtDate(r.entry_date)}</span><span>{r.counter}</span><span>Balance {fmtIDR(r.balance)}</span></>}
+                meta={<><span>{fmtDate(r.entry_date)}</span><span>{r.counter}</span><span>{t("ledger.balance")} {fmtIDR(r.balance)}</span></>}
                 value={r.debit ? `+ ${fmtIDR(r.debit)}` : `− ${fmtIDR(r.credit)}`}
                 valueClass={(r.debit > 0) === (ledger.account.normal_balance === "Debit") ? "text-emerald-700" : "text-rose-700"}
               />
@@ -95,7 +94,7 @@ export function LedgerPage({ id }: { id: string }) {
                 <td className="text-right font-medium">{fmtIDR(ledger.opening)}</td>
               </tr>
               {ledger.rows.map((r, i) => (
-                <tr key={`${r.entry_id}-${i}`}>
+                <tr key={`${r.entry_id}-${i}`} className="cursor-pointer hover:bg-muted/40" onClick={() => setOpenId(r.entry_id)}>
                   <td className="whitespace-nowrap">{fmtDate(r.entry_date)}</td>
                   <td className="text-muted-foreground">{r.entry_no}</td>
                   <td>
@@ -121,6 +120,7 @@ export function LedgerPage({ id }: { id: string }) {
           </TableCard>
         )}
       </div>
+      <EntryDetailSheet id={openId} onClose={() => (setOpenId(null), setReload((n) => n + 1))} />
     </AppShell>
   )
 }

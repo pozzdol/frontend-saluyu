@@ -7,7 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { changePassword, logout, updateProfile, type User } from "@/lib/api"
+import { ApiError, changePassword, logout, updateProfile, type User } from "@/lib/api"
+import { toast } from "@/components/toast"
 import { DayOfMonthPicker, SelectPicker } from "@/components/picker"
 import { useT } from "@/lib/i18n"
 import { Sessions, TwoFactor } from "@/components/security"
@@ -66,15 +67,24 @@ export function Account({ user }: { user: User }) {
     if (v.name !== user.name) body.name = v.name
     if (v.img_url !== user.img_url) body.img_url = v.img_url
     if (Number(v.period_start_day) !== user.period_start_day) body.period_start_day = Number(v.period_start_day)
-    if (Object.keys(body).length === 0) return t("common.nothingToUpdate")
+    // Feedback as a toast: "nothing changed" is information, not a green success box.
+    if (Object.keys(body).length === 0) return toast(t("common.nothingToUpdate")), ""
     await updateProfile(body)
-    return t("prof.saved")
+    toast(t("prof.saved"))
+    return ""
   })
 
   const password = useForm(async (v, form) => {
-    await changePassword({ old_password: v.old_password, new_password: v.new_password })
+    try {
+      await changePassword({ old_password: v.old_password, new_password: v.new_password })
+    } catch (e) {
+      // A wrong current password belongs under that field, not in a banner above the form.
+      if (e instanceof ApiError && e.code === "wrong_password") throw new ApiError(400, "validation failed", undefined, "validation", { old_password: "wrongPassword" })
+      throw e
+    }
     form.reset()
-    return t("prof.pwChanged")
+    toast(t("prof.pwChanged"))
+    return ""
   })
 
   const [leaving, setLeaving] = useState(false)

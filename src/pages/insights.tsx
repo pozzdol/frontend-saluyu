@@ -6,7 +6,7 @@ import { Term, type TermKey } from "@/components/term"
 import { Card, CardContent } from "@/components/ui/card"
 import { getHealth, getInsights, getTrends, useEntriesVersion, type Health, type Insight, type Insights, type Ratio, type TrendPoint } from "@/lib/api"
 import { intlLocale, useT, type Key } from "@/lib/i18n"
-import { cn, fmtIDR } from "@/lib/utils"
+import { cn, fmtIDR, fmtRupiah } from "@/lib/utils"
 
 function insightText(t: ReturnType<typeof useT>, i: Insight) {
   const vars = { name: i.name ?? "", amount: fmtIDR(i.amount), percent: Math.abs(i.percent).toLocaleString(), points: Math.abs(i.percent).toLocaleString() }
@@ -31,11 +31,11 @@ export function InsightsTop({ date }: { date: string }) {
   const safe = d.safe_per_day
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+      <div className="grid gap-4 md:grid-cols-[1fr_1.4fr]">
         <Card className="rounded-sm bg-gradient-to-br from-[#0052d9] to-[#2b74f0] text-white">
           <CardContent className="grid gap-1">
             <p className="text-sm text-white/85 [&_button]:text-white/85"><Term k="safePerDay">{t("ins.safeTitle")}</Term></p>
-            <p className="text-3xl font-bold tracking-tight tabular-nums">{fmtIDR(safe.amount)}</p>
+            <p className="text-3xl font-bold tracking-tight tabular-nums">{fmtRupiah(safe.amount)}</p>
             <p className="text-xs text-white/85">
               {safe.days_left > 0
                 ? t(safe.basis === "budget" ? "ins.safeBudget" : "ins.safeSurplus", { remaining: fmtIDR(safe.remaining), days: safe.days_left, date: fmtDate(d.period.end) })
@@ -69,7 +69,7 @@ export function InsightsTop({ date }: { date: string }) {
           </CardContent>
         </Card>
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="rounded-sm"><CardContent>
           <Donut caption={<Term k="expense">{t("ins.whereMoneyWent")}</Term>} total={d.expense_total} otherLabel={t("ins.other")}
             items={d.by_category.map((c) => ({ label: c.name, value: c.amount }))} />
@@ -139,8 +139,11 @@ export function TrendsAndHealth({ date }: { date: string }) {
           {health.periods < 3 && <p className="text-xs text-muted-foreground">{t("health.young", { n: health.periods })}</p>}
         </section>
       )}
-      {trend && trend.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-2">
+      {trend && trend.length > 0 && trend.filter((p) => p.income || p.expense).length < 2 && (
+        <p className="rounded-sm border bg-card px-4 py-3 text-sm text-muted-foreground">{t("ins.trendSoon")}</p>
+      )}
+      {trend && trend.filter((p) => p.income || p.expense).length >= 2 && (
+        <div className="grid gap-6 md:grid-cols-2">
           <Card className="rounded-sm"><CardContent>
             <Lines caption={<Term k="netWorth">{t("ins.netWorthTrend")}</Term>} labels={trend.map((p) => p.period.label)}
               series={[{ name: t("glossary.netWorth.label"), values: trend.map((p) => p.net_worth) }]} />

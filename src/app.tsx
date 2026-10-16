@@ -26,6 +26,7 @@ import { browserLocale, setLocale, t, useT } from "@/lib/i18n"
 import { flush } from "@/lib/outbox"
 import { toast } from "@/components/toast"
 import { toFormError } from "@/components/field"
+import { Logo } from "@/components/site"
 
 // protect renders a page only for a signed-in user and sends everyone else to /login.
 function protect<P>(Page: ComponentType<P & { user: User }>) {
@@ -34,11 +35,15 @@ function protect<P>(Page: ComponentType<P & { user: User }>) {
     const { route, path } = useLocation()
     // Books must be opened before anything else in the console makes sense.
     const needsOpening = !!user && !user.start_date && path.startsWith("/app") && path !== "/app/opening" && path !== "/app/welcome"
+    // The wizard is for opening the books once. Finishing it again would replace the opening
+    // balances with only what it asked for, so open books skip it.
+    const alreadyOpen = !!user?.start_date && path === "/app/welcome"
     useEffect(() => {
       if (ready && !user) route("/login", true)
       else if (needsOpening) route("/app/welcome", true)
-    }, [ready, user, needsOpening])
-    return user && !needsOpening ? <Page {...props} user={user} /> : null
+      else if (alreadyOpen) route("/app/dashboard", true)
+    }, [ready, user, needsOpening, alreadyOpen])
+    return user && !needsOpening && !alreadyOpen ? <Page {...props} user={user} /> : null
   }
 }
 
@@ -51,8 +56,9 @@ function Redirect({ to }: { to: string }) {
 function NotFound() {
   const t = useT()
   return (
-    <div className="grid min-h-svh place-items-center px-4 text-center">
-      <div>
+    <div className="grid min-h-svh grid-rows-[auto_1fr] px-4 py-6 text-center">
+      <div className="justify-self-start"><Logo /></div>
+      <div className="self-center">
         <p className="text-sm font-medium text-primary">404</p>
         <h1 className="mt-2 text-2xl font-semibold">{t("common.pageNotFound")}</h1>
         <a href="/" className="mt-4 inline-block text-sm text-primary hover:underline">{t("common.backHome")}</a>

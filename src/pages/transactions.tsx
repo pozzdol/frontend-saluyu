@@ -16,6 +16,7 @@ import {
   listAccounts,
   listEntries,
   postEntry,
+  deleteEntry,
   type Account,
   type Entry,
   type EntryQuery,
@@ -25,9 +26,10 @@ import {
   useHiddenEntries,
 } from "@/lib/api"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
-import { Info, Term } from "@/components/term"
+import { Term } from "@/components/term"
 import { t, useT, type Key } from "@/lib/i18n"
 import { EntryDetailSheet } from "@/components/entry-detail"
+import { toast } from "@/components/toast"
 
 // daysBetween counts whole days from date a to date b (YYYY-MM-DD), DST-safe via UTC.
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5)
@@ -56,6 +58,9 @@ export const kindBadge: Record<string, string> = {
   installment: "bg-indigo-50 text-indigo-700",
 }
 
+// The same short words as Quick Add, so both ways of recording speak alike (and fit a phone).
+const tabLabel: Record<FormKind, Key> = { expense: "qa.out", income: "qa.in", transfer: "qa.move" }
+
 function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
   const t = useT()
   const [kind, setKind] = useState<FormKind>("expense")
@@ -79,10 +84,11 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
   const early = nextStart !== "" && daysBetween(date, nextStart) <= 3
   const showNext = kind === "income" && early
 
-  // Reset the selection when the kind changes, defaulting to the first sensible account.
+  // Reset the selection when the kind changes. The money account defaults to the first one; the
+  // category, source or destination stays empty until chosen, so nothing is filed by accident.
   useEffect(() => {
-    setFrom(fromOptions[0]?.id ?? "")
-    setTo(toOptions.find((a) => a.id !== fromOptions[0]?.id)?.id ?? "")
+    setFrom(kind === "income" ? "" : fromOptions[0]?.id ?? "")
+    setTo(kind === "income" ? toOptions[0]?.id ?? "" : "")
   }, [kind, accounts])
 
   const form = useForm(async (v, el) => {
@@ -90,7 +96,8 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
     if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
     const fee = kind === "transfer" && v.fee ? toSen(v.fee) : 0
     if (!(fee >= 0)) throw new ApiError(400, "validation failed", undefined, "validation", { fee: "invalid" })
-    await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }), ...(fee > 0 && feeAccount && { fee, fee_account_id: feeAccount.id }) })
+    if (!from || !to) throw new ApiError(400, "validation failed", undefined, "validation", { ...(!from && { from_account_id: "choose" }), ...(!to && { to_account_id: "choose" }) })
+    const posted = await postEntry({ kind, entry_date: date, amount, from_account_id: from, to_account_id: to, description: v.description, ...(showNext && nextPeriod && { next_period: true }), ...(fee > 0 && feeAccount && { fee, fee_account_id: feeAccount.id }) })
     // Keep date and accounts for the next entry: people usually log several in a row.
     ;(el.elements.namedItem("amount") as HTMLInputElement).value = ""
     ;(el.elements.namedItem("description") as HTMLInputElement).value = ""
@@ -98,7 +105,11 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
     if (feeInput) feeInput.value = ""
     setNextPeriod(false)
     onPosted()
-    return t("tx.savedKind", { kind: t(rule.label) })
+    // Same feedback as Quick Add: a toast with Undo, not a green box that outlives the moment.
+    toast(t("tx.savedUndo", { kind: t(rule.label), amount: fmtIDR(amount) }), {
+      action: { label: t("common.undo"), run: () => deleteEntry(posted.id).then(() => (toast(t("qa.undone")), onPosted()), (x) => toast(toFormError(x).message ?? "", { tone: "error" })) },
+    })
+    return ""
   })
   const err = form.err
 
@@ -112,7 +123,7 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
           onChange={setKind}
           items={(Object.keys(kinds) as FormKind[]).map((k) => {
             const Icon = kinds[k].icon
-            return { value: k, label: <><Icon className="size-4" />{t(kinds[k].label)}</> }
+            return { value: k, label: <><Icon className="size-4" />{t(tabLabel[k])}</> }
           })}
         />
 
@@ -125,7 +136,7 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
           </div>
           <DateField name="entry_date" label={t("common.date")} value={date} onChange={setDate} error={err.fields?.entry_date} className="md:col-span-1" />
           <SelectField name="from" label={t(rule.fromLabel)} value={from} onChange={setFrom} options={accountOptions(fromOptions)} error={err.fields?.from_account_id} className="md:col-span-3" />
-          <SelectField name="to" label={t(rule.toLabel)} value={to} onChange={setTo} options={accountOptions(toOptions)} error={err.fields?.to_account_id} className="md:col-span-3" />
+          <SelectField name="to" label={t(rule.toLabel)} value={to} onChange={setTo} options={accountOptions(toOptions.filter((a) => a.id !== from))} error={err.fields?.to_account_id} className="md:col-span-3" />
           <div className="md:col-span-3">
             <Field name="description" label={t("common.note")} placeholder={kind === "income" ? t("tx.notePlaceholderIncome") : t("tx.notePlaceholderExpense")} error={err.fields?.description} />
           </div>
@@ -154,7 +165,7 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
         </form>
         {kind === "income" && (
           <p className="mt-3 text-xs text-muted-foreground">
-            {t("tx.refundHint", { account: "4003 · Pengembalian" })}
+            {t("tx.refundHint", { account: accounts.find((a) => a.code === "4003")?.name ?? "Pengembalian" })}
           </p>
         )}
       </CardContent>
@@ -235,6 +246,10 @@ export function Transactions({ user }: { user: User }) {
   const hidden = useHiddenEntries()
   const [openId, setOpenId] = useState<string | null>(null)
   const entries = data?.entries.filter((e) => !hidden.has(e.id))
+  const total = data ? data.total - (data.entries.length - (entries?.length ?? 0)) : 0
+  const filtered = [q.q, q.kind, q.account_id, q.from, q.to, q.amount_min, q.amount_max].some(Boolean)
+  const empty = data && entries?.length === 0 ? t(filtered ? "tx.noMatch" : "tx.empty") : undefined
+  const clearFilters = () => set({ q: "", kind: "", account_id: "", from: "", to: "", amount_min: undefined, amount_max: undefined })
 
   useEffect(() => {
     listAccounts().then(setAccounts).catch((e) => setLoadErr(toFormError(e)))
@@ -261,7 +276,7 @@ export function Transactions({ user }: { user: User }) {
             <JournalFilters q={q} set={set} accounts={accountOptionsSorted} />
           </div>
 
-          <MobileList empty={data && data.entries.length === 0 ? t("tx.empty") : undefined}>
+          <MobileList className="md:block lg:hidden" empty={empty}>
             {entries?.map((e) => {
               const side = e.kind === "income" ? e.lines.filter((l) => l.credit > 0) : e.lines.filter((l) => l.debit > 0)
               const parts = side.map((l) => l.contact_name ?? l.name)
@@ -276,7 +291,7 @@ export function Transactions({ user }: { user: User }) {
                       <Badge className={cn("rounded-sm", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{t(`kind.${e.kind}`)}</Badge>
                       {e.period_date && <span className="text-primary">{t("tx.nextPeriodMark")}</span>}
                       <span className="w-full truncate">
-                        {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")} ← {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")}
+                        {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")} → {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")}
                       </span>
                     </>
                   }
@@ -287,14 +302,14 @@ export function Transactions({ user }: { user: User }) {
             })}
           </MobileList>
 
-          <TableCard className="hidden md:block">
+          <TableCard className="hidden lg:block">
             <thead>
               <tr>
                 <th>{t("tx.no")}</th>
                 <th>{t("common.date")}</th>
                 <th>{t("tx.type")}</th>
                 <th>{t("common.note")}</th>
-                <th><span className="inline-flex items-center gap-1">{t("tx.debitCredit")} <Info k="debit" /></span></th>
+                <th>{t("tx.debitCredit")}</th>
                 <th className="text-right!">{t("common.amount")}</th>
                 <th><span className="sr-only">{t("tx.actions")}</span></th>
               </tr>
@@ -315,7 +330,7 @@ export function Transactions({ user }: { user: User }) {
                     </td>
                     <td className="max-w-56 truncate">{e.description || <span className="text-muted-foreground">—</span>}</td>
                     <td className="whitespace-nowrap">
-                      {dr} <span className="text-muted-foreground">→</span> {cr}
+                      {cr} <span className="text-muted-foreground">→</span> {dr}
                     </td>
                     <td className="text-right font-medium whitespace-nowrap tabular-nums">{fmtIDR(amountOf(e))}</td>
                     <td className="text-right">
@@ -326,10 +341,11 @@ export function Transactions({ user }: { user: User }) {
                   </tr>
                 )
               })}
-              {data && data.entries.length === 0 && (
+              {empty && (
                 <tr>
                   <td colSpan={7} className="py-10! text-center text-muted-foreground">
-                    {t("tx.empty")}
+                    {empty}
+                    {filtered && <Button variant="link" className="ml-1 h-auto p-0" onClick={clearFilters}>{t("common.clearFilters")}</Button>}
                   </td>
                 </tr>
               )}
@@ -337,7 +353,7 @@ export function Transactions({ user }: { user: User }) {
           </TableCard>
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{data ? (data.total === 1 ? t("tx.countOne") : t("tx.count", { n: data.total })) : t("common.loading")}</span>
+            <span>{data ? (total === 1 ? t("tx.countOne") : t("tx.count", { n: total })) : t("common.loading")}</span>
             <span className="flex items-center gap-2">
               <Button variant="outline" size="icon-sm" aria-label={t("tx.prevPage")} disabled={(q.page ?? 1) <= 1} onClick={() => set({ page: (q.page ?? 1) - 1 })}>
                 <ChevronLeft />

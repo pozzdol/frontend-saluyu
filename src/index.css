@@ -185,3 +185,12 @@
     height: 0;
   }
 }
+
+/* Scroll reveals start hidden; a printed page shows everything. */
+@media print {
+  [data-reveal],
+  [data-stagger] > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

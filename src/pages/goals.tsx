@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ApiError, deleteGoal, listAccounts, listGoals, perContact, saveGoal, useEntriesVersion, type Account, type Goal } from "@/lib/api"
 import { useT } from "@/lib/i18n"
+import { toast } from "@/components/toast"
 import { cn, fmtIDR, toSen } from "@/lib/utils"
 
 function GoalForm({ goal, accounts, onDone }: { goal?: Goal; accounts: Account[]; onDone: () => void }) {
@@ -17,10 +18,12 @@ function GoalForm({ goal, accounts, onDone }: { goal?: Goal; accounts: Account[]
     if (!(target > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { target: "positiveAmount" })
     await saveGoal({ name: v.name, target, deadline: v.deadline || null, account_id: account }, goal?.id)
     onDone()
+    toast(t("goal.savedToast", { name: v.name }))
     return ""
   })
   return (
     <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
+      <h3 className="font-semibold md:col-span-2">{goal ? t("goal.editTitle", { name: goal.name }) : t("goal.newTitle")}</h3>
       <div className="md:col-span-2"><Status err={form.err} ok="" /></div>
       <Field name="name" label={t("goal.name")} placeholder={t("goal.namePlaceholder")} defaultValue={goal?.name} error={form.err.fields?.name} />
       <AmountField name="target" label={t("goal.target")} defaultValue={goal ? (goal.target / 100).toLocaleString("id-ID") : ""} error={form.err.fields?.target} />
@@ -51,8 +54,8 @@ function GoalCard({ g, accountName, onEdit, onDelete }: { g: Goal; accountName: 
             <p className="font-medium">{g.name}</p>
             <p className="text-xs text-muted-foreground">{accountName}{g.deadline && ` · ${t("goal.by", { date: fmtDate(g.deadline) })}`}</p>
           </div>
-          {onEdit && <Button variant="ghost" size="icon-sm" aria-label={t("goal.edit", { name: g.name })} onClick={onEdit}><Pencil /></Button>}
-          {onDelete && <Button variant="ghost" size="icon-sm" aria-label={t("goal.delete", { name: g.name })} onClick={onDelete}><Trash2 /></Button>}
+          {onEdit && <Button variant="ghost" size="icon-sm" aria-label={t("goal.edit", { name: g.name })} title={t("goal.edit", { name: g.name })} onClick={onEdit}><Pencil /></Button>}
+          {onDelete && <Button variant="ghost" size="icon-sm" aria-label={t("goal.delete", { name: g.name })} title={t("goal.delete", { name: g.name })} onClick={onDelete}><Trash2 /></Button>}
         </div>
         <div role="meter" aria-label={t("goal.progress", { name: g.name })} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}
           className="h-2 overflow-hidden rounded-sm bg-[#e6ebf5]">
@@ -84,6 +87,13 @@ export function Goals({ manage = false }: { manage?: boolean }) {
   if (!goals || (!manage && goals.length === 0)) return null
   const name = (id: string) => accounts.find((a) => a.id === id)?.name ?? ""
   const done = () => (setEditing(null), setReload((n) => n + 1))
+  // Delete with Undo, like everything else that disappears: Undo saves the goal again.
+  const remove = (g: Goal) => deleteGoal(g.id).then(() => {
+    done()
+    toast(t("goal.deletedToast", { name: g.name }), {
+      action: { label: t("common.undo"), run: () => saveGoal({ name: g.name, target: g.target, deadline: g.deadline, account_id: g.account_id }).then(done, (e) => setErr(toFormError(e))) },
+    })
+  }, (e) => setErr(toFormError(e)))
   return (
     <section className="grid gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -92,17 +102,21 @@ export function Goals({ manage = false }: { manage?: boolean }) {
         {!manage && <a href="/app/budgets" className="text-sm text-primary hover:underline">{t("goal.manage")}</a>}
       </div>
       <Status err={err} ok="" />
-      {editing !== null && (
+      {editing === "new" && (
         <Card className="rounded-sm"><CardContent>
-          <GoalForm key={editing === "new" ? "new" : editing.id} goal={editing === "new" ? undefined : editing} accounts={accounts} onDone={done} />
+          <GoalForm key="new" accounts={accounts} onDone={done} />
         </CardContent></Card>
       )}
       {goals.length === 0 && <p className="text-sm text-muted-foreground">{t("goal.none")}</p>}
       <div className="grid gap-4 md:grid-cols-2">
-        {goals.map((g) => (
+        {goals.map((g) => editing !== null && editing !== "new" && editing.id === g.id ? (
+          <Card key={g.id} className="rounded-sm md:col-span-2"><CardContent>
+            <GoalForm goal={g} accounts={accounts} onDone={done} />
+          </CardContent></Card>
+        ) : (
           <GoalCard key={g.id} g={g} accountName={name(g.account_id)}
             onEdit={manage ? () => setEditing(g) : undefined}
-            onDelete={manage ? () => deleteGoal(g.id).then(done, (e) => setErr(toFormError(e))) : undefined} />
+            onDelete={manage ? () => remove(g) : undefined} />
         ))}
       </div>
     </section>

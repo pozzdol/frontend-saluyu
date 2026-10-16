@@ -5,10 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 2 })
+const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const idrSen = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// Money travels as integer sen (1/100 rupiah) so cents never pick up float error.
-export const fmtIDR = (sen: number) => idr.format(sen / 100)
+// Money travels as integer sen (1/100 rupiah) so cents never pick up float error. Whole rupiah
+// show no decimals; anything else shows both digits ("Rp 576.593,10", never "Rp 576.593,1").
+export const fmtIDR = (sen: number) => (Number.isInteger(sen / 100) ? idr : idrSen).format(sen / 100)
+
+// fmtRupiah rounds down to whole rupiah, for estimates where sen are noise (safe to spend per day).
+export const fmtRupiah = (sen: number) => idr.format(Math.floor(sen / 100))
+
+// fmtPercent writes a ratio (0.995) the local way: "99,5%" in Indonesian, "99.5%" in English.
+export const fmtPercent = (ratio: number, digits = 1) =>
+  new Intl.NumberFormat(document.documentElement.lang === "en" ? "en-GB" : "id-ID", { style: "percent", maximumFractionDigits: digits }).format(ratio)
 
 // toSen reads what a person types: "25000", "25.000" or "10826012,92" (Indonesian style),
 // or "10826012.92". A dot followed by exactly 3 digits is a thousands separator.

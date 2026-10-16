@@ -22,6 +22,7 @@ import {
   type ImportPreview,
   type ImportRow,
   type Mapping,
+  type User,
 } from "@/lib/api"
 import { useT, type Key } from "@/lib/i18n"
 import { cn, fmtIDR } from "@/lib/utils"
@@ -86,10 +87,14 @@ function Rules({ accounts }: { accounts: Account[] }) {
   async function add(e: SubmitEvent) {
     e.preventDefault()
     setErr({})
+    // The category is chosen on purpose: a silent first option once filed GRAB under Gaji.
+    if (!account) return setErr({ fields: { account: t("field.choose") } })
     try {
-      const r = await createCategoryRule({ keyword, account_id: account || categories[0]?.id, min_amount: null, max_amount: null })
+      const r = await createCategoryRule({ keyword, account_id: account, min_amount: null, max_amount: null })
       setRules([...rules, r])
       setKeyword("")
+      setAccount("")
+      toast(t("imp.ruleAdded", { keyword: r.keyword, account: accounts.find((a) => a.id === r.account_id)?.name ?? "" }))
     } catch (x) {
       setErr(toFormError(x))
     }
@@ -101,7 +106,7 @@ function Rules({ accounts }: { accounts: Account[] }) {
       <Status err={err} ok="" />
       <form onSubmit={add} noValidate className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
         <Field name="keyword" label={t("imp.keyword")} placeholder="GRAB" value={keyword} onInput={(e) => setKeyword((e.currentTarget as HTMLInputElement).value)} error={err.fields?.keyword} />
-        <SelectField name="account" label={t("imp.goesTo")} value={account || categories[0]?.id || ""} onChange={setAccount} options={accountOptions(categories)} />
+        <SelectField name="account" label={t("imp.goesTo")} value={account} onChange={setAccount} options={accountOptions(categories)} error={err.fields?.account} mustChoose />
         <Button type="submit" variant="outline" className="h-10 rounded-sm" disabled={!keyword.trim()}><Plus /> {t("common.add")}</Button>
       </form>
       {rules.length > 0 && (
@@ -112,7 +117,13 @@ function Rules({ accounts }: { accounts: Account[] }) {
               <span className="text-muted-foreground">→</span>
               <span className="mr-auto">{accounts.find((a) => a.id === r.account_id)?.name}</span>
               <Button variant="ghost" size="icon-sm" aria-label={t("imp.deleteRule", { keyword: r.keyword })}
-                onClick={() => deleteCategoryRule(r.id).then(() => setRules(rules.filter((x) => x.id !== r.id)), (e) => setErr(toFormError(e)))}>
+                title={t("imp.deleteRule", { keyword: r.keyword })}
+                onClick={() => deleteCategoryRule(r.id).then(() => {
+                  setRules((list) => list.filter((x) => x.id !== r.id))
+                  toast(t("imp.ruleDeleted", { keyword: r.keyword }), {
+                    action: { label: t("common.undo"), run: () => createCategoryRule({ keyword: r.keyword, account_id: r.account_id, min_amount: r.min_amount, max_amount: r.max_amount }).then((n) => setRules((list) => [...list, n]), (e) => setErr(toFormError(e))) },
+                  })
+                }, (e) => setErr(toFormError(e)))}>
                 <Trash2 />
               </Button>
             </li>
@@ -123,8 +134,9 @@ function Rules({ accounts }: { accounts: Account[] }) {
   )
 }
 
-export function ImportPage() {
+export function ImportPage({ user }: { user: User }) {
   const t = useT()
+  const [fileKey, setFileKey] = useState(0) // a fresh <input type=file> after each import
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -145,6 +157,9 @@ export function ImportPage() {
   const active = accounts.filter((a) => a.is_active && !perContact(a.code) && a.id !== accountId)
   const outOptions = accountOptions(active.filter((a) => a.type === "Expense" || a.type === "Asset" || a.type === "Liability"))
   const inOptions = accountOptions(active.filter((a) => a.type === "Revenue" || a.type === "Asset" || a.type === "Liability"))
+  // Rows before the books start would make the whole import fail: mark and skip them up front.
+  const early = (r: ImportRow) => !!user.start_date && r.date < user.start_date
+  const skipped = (r: ImportRow) => r.status === "duplicate" || early(r)
   const fallback = (r: ImportRow) => accounts.find((a) => a.code === (r.amount < 0 ? "5199" : "4199"))?.id ?? ""
 
   async function load(mapping?: Mapping) {
@@ -154,7 +169,7 @@ export function ImportPage() {
     try {
       const p = await previewImport(accountId, file, mapping)
       setPreview(p)
-      setChoice(Object.fromEntries(p.rows.map((r) => [r.hash, { include: r.status !== "duplicate", account: r.suggested_account_id ?? undefined }])))
+      setChoice(Object.fromEntries(p.rows.map((r) => [r.hash, { include: !skipped(r), account: r.suggested_account_id ?? undefined }])))
     } catch (e) {
       setErr(toFormError(e))
       setShowMapping(true)
@@ -168,7 +183,7 @@ export function ImportPage() {
     setBusy(true)
     setErr({})
     try {
-      const rows = preview.rows.filter((r) => choice[r.hash]?.include && r.status !== "duplicate").map((r) => ({
+      const rows = preview.rows.filter((r) => choice[r.hash]?.include && !skipped(r)).map((r) => ({
         hash: r.hash, date: r.date, description: r.description, amount: r.amount,
         ...(r.status === "matched" ? { match_entry_id: r.entry_id! } : { account_id: choice[r.hash]?.account || fallback(r) }),
       }))
@@ -176,6 +191,7 @@ export function ImportPage() {
       toast(t("imp.done", { posted: res.posted, matched: res.matched }))
       setPreview(null)
       setFile(null)
+      setFileKey((k) => k + 1)
     } catch (e) {
       setErr(toFormError(e))
     } finally {
@@ -183,7 +199,8 @@ export function ImportPage() {
     }
   }
 
-  const count = preview?.rows.filter((r) => choice[r.hash]?.include && r.status !== "duplicate").length ?? 0
+  const count = preview?.rows.filter((r) => choice[r.hash]?.include && !skipped(r)).length ?? 0
+  const earlyCount = preview?.rows.filter(early).length ?? 0
   const set = (hash: string, patch: { include?: boolean; account?: string }) => setChoice((c) => ({ ...c, [hash]: { ...c[hash], ...patch } }))
 
   return (
@@ -194,10 +211,15 @@ export function ImportPage() {
         <Card className="rounded-sm">
           <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
             <SelectField name="account" label={t("imp.account")} value={accountId} onChange={(v) => (setAccountId(v), setPreview(null))} options={accountOptions(money)} />
+            {/* Our own button and file name: the browser's own control speaks the browser's language. */}
             <label className="grid min-w-0 gap-1.5 text-sm">
               <span className="font-medium">{t("imp.file")}</span>
-              <input type="file" accept=".csv,.xlsx,text/csv" onChange={(e) => (setFile(e.currentTarget.files?.[0] ?? null), setPreview(null))}
-                className="h-11 w-full min-w-0 rounded-sm border bg-background px-2 py-2 text-sm file:mr-3 file:rounded-sm file:border-0 file:bg-[#eaf2ff] file:px-3 file:text-primary md:h-10 md:py-1.5" />
+              <span className="flex h-11 min-w-0 items-center gap-3 rounded-sm border bg-background px-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 md:h-10">
+                <input key={fileKey} type="file" accept=".csv,.xlsx,text/csv" className="sr-only"
+                  onChange={(e) => (setFile(e.currentTarget.files?.[0] ?? null), setPreview(null))} />
+                <span className="shrink-0 rounded-sm bg-[#eaf2ff] px-3 py-1 font-medium text-primary">{t("imp.chooseFile")}</span>
+                <span className={cn("min-w-0 truncate", !file && "text-muted-foreground")}>{file?.name ?? t("imp.noFile")}</span>
+              </span>
             </label>
             <Button className="h-10 rounded-sm" disabled={!file || !accountId || busy} onClick={() => load()}>
               {busy ? <Loader2 className="animate-spin" /> : <FileUp />} {t("imp.read")}
@@ -218,23 +240,29 @@ export function ImportPage() {
                 <Button variant="outline" className="justify-self-start rounded-sm" disabled={busy} onClick={() => load(preview.mapping)}>{t("imp.reread")}</Button>
               </CardContent></Card>
             )}
+            {earlyCount > 0 && user.start_date && (
+              <p className="text-sm text-amber-800">{t("imp.earlyNote", { n: earlyCount, date: fmtDate(user.start_date) })}</p>
+            )}
             {preview.errors.length > 0 && (
               <p className="text-sm text-amber-800">{t("imp.lineErrors", { n: preview.errors.length, lines: preview.errors.slice(0, 5).map((e) => e.line).join(", ") })}</p>
             )}
             <MobileList empty={preview.rows.length === 0 ? t("imp.empty") : undefined} className="md:block">
               {preview.rows.map((r) => {
                 const c = choice[r.hash] ?? { include: false }
+                const off = skipped(r)
                 return (
                   <MobileItem key={r.hash}
-                    lead={<Checkbox aria-label={t("imp.include", { line: r.line })} checked={c.include && r.status !== "duplicate"} disabled={r.status === "duplicate"}
+                    lead={<Checkbox aria-label={t("imp.include", { line: r.line })} checked={c.include && !off} disabled={off}
                       onCheckedChange={(v) => set(r.hash, { include: v === true })} />}
                     title={<span className={cn(!c.include && "text-muted-foreground")}>{r.description || "—"}</span>}
                     meta={<>
                       <span>{fmtDate(r.date)}</span>
-                      <Badge className={cn("rounded-sm", statusTone[r.status])}>
-                        {t(`imp.status.${r.status}` as Key)}{r.entry_no ? ` #${r.entry_no}` : ""}
-                      </Badge>
-                      {r.status === "new" && c.include && (
+                      {early(r) ? (
+                        <Badge className="rounded-sm bg-amber-50 text-amber-800">{t("imp.early")}</Badge>
+                      ) : (
+                        <Badge className={cn("rounded-sm", statusTone[r.status])}>{t(`imp.status.${r.status}` as Key)}</Badge>
+                      )}
+                      {r.status === "new" && c.include && !off && (
                         <span className="w-full max-w-72" onClick={(e) => e.preventDefault()}>
                           <SelectPicker aria-label={t("imp.categoryFor", { line: r.line })} title={t("tx.category")} value={c.account || fallback(r)}
                             options={r.amount < 0 ? outOptions : inOptions} onChange={(v) => set(r.hash, { account: v })} className="h-9 text-sm" />

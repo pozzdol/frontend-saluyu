@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, Landmark, Loader2, Plus, Trash2 } from "lucide-react"
+import { Archive, CreditCard, Landmark, Loader2, Plus, Trash2 } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -26,6 +26,7 @@ import {
   payInstallment,
   perContact,
   postEntry,
+  updateAccount,
   updateCard,
   useEntriesVersion,
   type Account,
@@ -81,7 +82,7 @@ export function DueBills() {
   )
 }
 
-function NewCard({ onDone }: { onDone: () => void }) {
+function NewCard({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = useT()
   const [kind, setKind] = useState<"credit_card" | "paylater">("credit_card")
   const [stmt, setStmt] = useState(20)
@@ -94,7 +95,8 @@ function NewCard({ onDone }: { onDone: () => void }) {
     const c = await createCard({ name: v.name, kind, statement_day: stmt, due_day: due, credit_limit: limit, min_payment_pct: pct })
     el.reset()
     onDone()
-    return t("cc.cardAdded", { name: c.account.name })
+    toast(t("cc.cardAdded", { name: c.account.name }))
+    return ""
   })
   return (
     <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
@@ -112,18 +114,36 @@ function NewCard({ onDone }: { onDone: () => void }) {
         <DayOfMonthPicker id="due_day" value={due} onChange={setDue} />
       </div>
       <Field name="min_payment_pct" label={t("cc.minPct")} inputMode="numeric" defaultValue="10" error={form.err.fields?.min_payment_pct} />
-      <div className="flex items-end">
+      <div className="flex items-end gap-2">
         <Button type="submit" disabled={form.busy} className="h-10 rounded-sm">
-          {form.busy ? <Loader2 className="animate-spin" /> : <Plus />} {t("cc.addCard")}
+          {form.busy && <Loader2 className="animate-spin" />} {t("cc.saveCard")}
         </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>{t("common.cancel")}</Button>
       </div>
     </form>
   )
 }
 
-function NewPlan({ accounts, onDone }: { accounts: Account[]; onDone: () => void }) {
+// monthlyPayment mirrors the schedule maths for the preview: annuity pays the same each month,
+// flat pays principal/n plus interest on the full principal.
+export function monthlyPayment(principal: number, annualRate: number, months: number, method: "annuity" | "flat") {
+  if (!(principal > 0) || !(months >= 1) || !(annualRate >= 0)) return null
+  const r = annualRate / 100 / 12
+  const pay = method === "flat" || r === 0 ? principal / months + (method === "flat" ? principal * r : 0) : (principal * r) / (1 - (1 + r) ** -months)
+  return { pay: Math.round(pay), interest: Math.round(pay * months - principal) }
+}
+
+const nextMonth = () => {
+  const d = new Date(todayISO() + "T00:00:00Z")
+  d.setUTCMonth(d.getUTCMonth() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function NewPlan({ accounts, onDone, onCancel }: { accounts: Account[]; onDone: () => void; onCancel: () => void }) {
   const t = useT()
   const [method, setMethod] = useState<"annuity" | "flat">("annuity")
+  const [nums, setNums] = useState({ principal: "", rate: "", tenor: "" })
+  const preview = monthlyPayment(toSen(nums.principal), Number(nums.rate.replace(",", ".")), Number(nums.tenor), method)
   const [into, setInto] = useState("")
   const intoOptions = [{ value: "", label: t("cc.alreadyRunning") }, ...accountOptions(accounts.filter((a) => a.is_active && (a.type === "Asset" || a.type === "Expense") && !perContact(a.code)))]
   const form = useForm(async (v, el) => {
@@ -139,10 +159,16 @@ function NewPlan({ accounts, onDone }: { accounts: Account[]; onDone: () => void
       ...(into && { received_into_id: into, entry_date: v.entry_date }) })
     el.reset()
     onDone()
-    return t("cc.planAdded", { name: p.account.name, amount: fmtIDR(p.next?.payment ?? 0) })
+    toast(t("cc.planAdded", { name: p.account.name, amount: fmtIDR(p.next?.payment ?? 0) }))
+    return ""
   })
   return (
-    <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
+    <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-2"
+      onInput={(e) => {
+        const el = e.currentTarget.elements
+        const val = (n: string) => (el.namedItem(n) as HTMLInputElement | null)?.value ?? ""
+        setNums({ principal: val("principal"), rate: val("annual_rate"), tenor: val("tenor_months") })
+      }}>
       <div className="md:col-span-2"><Status err={form.err} ok={form.ok} /></div>
       <Field name="name" label={t("cc.planName")} placeholder="KPR BTN" error={form.err.fields?.name} />
       <AmountField name="principal" label={t("cc.principal")} placeholder="18.000.000" error={form.err.fields?.principal} />
@@ -154,14 +180,20 @@ function NewPlan({ accounts, onDone }: { accounts: Account[]; onDone: () => void
           items={[{ value: "annuity", label: t("glossary.annuity.label") }, { value: "flat", label: t("glossary.flat.label") }]} />
         <span className="flex items-center gap-1 text-xs text-muted-foreground">{t(method === "annuity" ? "cc.annuityHint" : "cc.flatHint")} <Info k={method} /></span>
       </div>
-      <DateField name="first_due_date" label={t("cc.firstDue")} defaultValue={todayISO()} error={form.err.fields?.first_due_date} />
+      {preview && (
+        <p className="rounded-sm bg-[#eaf2ff] px-3 py-2 text-sm md:col-span-2" aria-live="polite">
+          {t("cc.preview", { amount: fmtIDR(preview.pay), interest: fmtIDR(preview.interest) })}
+        </p>
+      )}
+      <DateField name="first_due_date" label={t("cc.firstDue")} defaultValue={nextMonth()} error={form.err.fields?.first_due_date} />
       <SelectField name="received_into_id" label={t("cc.receivedInto")} value={into} onChange={setInto} options={intoOptions} />
       {into && <DateField name="entry_date" label={t("cc.receivedOn")} defaultValue={todayISO()} error={form.err.fields?.entry_date} />}
       <p className="text-xs text-muted-foreground md:col-span-2">{t(into ? "cc.receivedHint" : "cc.runningHint")}</p>
-      <div className="md:col-span-2">
+      <div className="flex gap-2 md:col-span-2">
         <Button type="submit" disabled={form.busy} className="h-10 rounded-sm">
-          {form.busy ? <Loader2 className="animate-spin" /> : <Plus />} {t("cc.addPlan")}
+          {form.busy && <Loader2 className="animate-spin" />} {t("cc.savePlan")}
         </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>{t("common.cancel")}</Button>
       </div>
     </form>
   )
@@ -181,6 +213,7 @@ export function CardsPage() {
       .catch((e) => setErr(toFormError(e)))
   }, [reload])
   const done = () => setReload((n) => n + 1)
+  const shownCards = cards?.filter((c) => c.account.is_active) ?? []
 
   return (
     <AppShell title={t("nav.cards")}>
@@ -189,12 +222,12 @@ export function CardsPage() {
         <section className="grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold"><Term k="statement">{t("cc.cards")}</Term></h2>
-            <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding(adding === "card" ? "" : "card")}><Plus /> {t("cc.addCard")}</Button>
+            {adding !== "card" && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding("card")}><Plus /> {t("cc.addCard")}</Button>}
           </div>
-          {adding === "card" && <Card className="rounded-sm"><CardContent><NewCard onDone={() => (done(), setAdding(""))} /></CardContent></Card>}
-          {cards && (
-            <MobileList empty={cards.length === 0 ? t("cc.noCards") : undefined} className="md:block">
-              {cards.map((c) => (
+          {adding === "card" && <Card className="rounded-sm"><CardContent><NewCard onDone={() => (done(), setAdding(""))} onCancel={() => setAdding("")} /></CardContent></Card>}
+          {cards && (adding !== "card" || shownCards.length > 0) && (
+            <MobileList empty={shownCards.length === 0 ? t("cc.noCards") : undefined} className="md:block">
+              {shownCards.map((c) => (
                 <MobileItem key={c.account.id} href={`/app/cards/${c.account.id}`}
                   lead={<span className="grid size-9 place-items-center rounded-sm bg-indigo-100 text-indigo-700"><CreditCard className="size-5" /></span>}
                   title={c.account.name}
@@ -212,10 +245,10 @@ export function CardsPage() {
         <section className="grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold"><Term k="installment">{t("cc.plans")}</Term></h2>
-            <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding(adding === "plan" ? "" : "plan")}><Plus /> {t("cc.addPlan")}</Button>
+            {adding !== "plan" && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding("plan")}><Plus /> {t("cc.addPlan")}</Button>}
           </div>
-          {adding === "plan" && <Card className="rounded-sm"><CardContent><NewPlan accounts={accounts} onDone={() => (done(), setAdding(""))} /></CardContent></Card>}
-          {plans && (
+          {adding === "plan" && <Card className="rounded-sm"><CardContent><NewPlan accounts={accounts} onDone={() => (done(), setAdding(""))} onCancel={() => setAdding("")} /></CardContent></Card>}
+          {plans && (adding !== "plan" || plans.length > 0) && (
             <MobileList empty={plans.length === 0 ? t("cc.noPlans") : undefined} className="md:block">
               {plans.map((p) => (
                 <MobileItem key={p.id} href={`/app/installments/${p.id}`}
@@ -297,6 +330,7 @@ function Stat({ label, value, tone }: { label: ComponentChildren; value: string;
 
 export function CardPage({ id }: { id: string }) {
   const t = useT()
+  const { route } = useLocation()
   const [c, setC] = useState<CardSummary | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [paying, setPaying] = useState(false)
@@ -312,10 +346,24 @@ export function CardPage({ id }: { id: string }) {
   const settings = useForm(async (v) => {
     if (!c) return ""
     const limit = v.credit_limit ? toSen(v.credit_limit) : 0
+    if (v.name.trim() && v.name.trim() !== c.account.name) await updateAccount(c.account.id, { name: v.name.trim() })
     setC(await updateCard(id, { statement_day: stmt ?? c.statement_day, due_day: due ?? c.due_day, credit_limit: limit, min_payment_pct: Number(v.min_payment_pct) }))
-    return t("common.saved")
+    toast(t("common.saved"))
+    return ""
   })
   const rupiah = (sen: number) => (sen / 100).toLocaleString("id-ID")
+
+  // A paid-off card can be put away; its history stays and Accounts can bring it back.
+  async function archive() {
+    if (!c) return
+    try {
+      await updateAccount(c.account.id, { is_active: false })
+      toast(t("cc.archived", { name: c.account.name }))
+      route("/app/cards")
+    } catch (e) {
+      setErr(toFormError(e))
+    }
+  }
 
   async function pay(from: string, date: string, sen: number) {
     if (!c) return
@@ -325,7 +373,7 @@ export function CardPage({ id }: { id: string }) {
 
   return (
     <AppShell title={c?.account.name ?? t("cc.card")}
-      actions={<a href="/app/cards" className="flex items-center gap-1 text-sm text-primary hover:underline"><ArrowLeft className="size-4" /> {t("nav.cards")}</a>}>
+      back={{ href: "/app/cards", label: t("nav.cards") }}>
       <Status err={err} ok="" />
       {c && (
         <div className="grid gap-6">
@@ -377,6 +425,7 @@ export function CardPage({ id }: { id: string }) {
               <form onSubmit={settings.onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
                 <h2 className="font-semibold md:col-span-2">{t("cc.settings")}</h2>
                 <div className="md:col-span-2"><Status err={settings.err} ok={settings.ok} /></div>
+                <div className="md:col-span-2"><Field name="name" label={t("cc.name")} defaultValue={c.account.name} /></div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="s-stmt">{t("cc.statementDay")}</Label>
                   <DayOfMonthPicker id="s-stmt" value={stmt ?? c.statement_day} onChange={setStmt} />
@@ -387,11 +436,16 @@ export function CardPage({ id }: { id: string }) {
                 </div>
                 <AmountField name="credit_limit" label={t("cc.limit")} defaultValue={c.credit_limit ? rupiah(c.credit_limit) : ""} />
                 <Field name="min_payment_pct" label={t("cc.minPct")} inputMode="numeric" defaultValue={String(c.min_payment_pct)} />
-                <div>
+                <div className="flex flex-wrap items-center gap-2 md:col-span-2">
                   <Button type="submit" variant="outline" disabled={settings.busy} className="rounded-sm">
                     {settings.busy && <Loader2 className="animate-spin" />}
                     {t("common.save")}
                   </Button>
+                  {c.owed === 0 ? (
+                    <Button type="button" variant="ghost" className="text-rose-700" onClick={archive}><Archive /> {t("cc.archive")}</Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{t("cc.archiveAfterPaid")}</span>
+                  )}
                 </div>
               </form>
             </CardContent>
@@ -431,7 +485,7 @@ export function PlanPage({ id }: { id: string }) {
 
   return (
     <AppShell title={p?.account.name ?? t("cc.plan")} term="installment"
-      actions={<a href="/app/cards" className="flex items-center gap-1 text-sm text-primary hover:underline"><ArrowLeft className="size-4" /> {t("nav.cards")}</a>}>
+      back={{ href: "/app/cards", label: t("nav.cards") }}>
       <Status err={err} ok="" />
       {p && (
         <div className="grid gap-6">
@@ -454,7 +508,9 @@ export function PlanPage({ id }: { id: string }) {
                 ) : (
                   <Badge className="rounded-sm bg-emerald-50 text-emerald-700">{t("cc.status.paid")}</Badge>
                 )}
-                {p.paid_count === 0 && <Button variant="ghost" className="text-rose-700" onClick={remove}><Trash2 /> {t("cc.deletePlan")}</Button>}
+                {p.paid_count === 0
+                  ? <Button variant="ghost" className="text-rose-700" onClick={remove}><Trash2 /> {t("cc.deletePlan")}</Button>
+                  : <span className="self-center text-xs text-muted-foreground">{t("cc.planKeeps")}</span>}
               </div>
             </CardContent>
           </Card>
@@ -471,7 +527,7 @@ export function PlanPage({ id }: { id: string }) {
               {p.rows?.map((r) => (
                 <MobileItem key={r.seq} title={`${r.seq}. ${fmtDate(r.due_date)}`}
                   meta={<><span>{t("cc.splitShort", { principal: fmtIDR(r.principal), interest: fmtIDR(r.interest) })}</span>
-                    {r.paid && <span className="text-emerald-700">{t("cc.paidEntry", { no: r.paid.entry_no })}</span>}</>}
+                    {r.paid && <span className="text-emerald-700">{t("cc.paidEntry")}</span>}</>}
                   value={fmtIDR(r.payment)} valueClass={r.paid ? "text-muted-foreground line-through" : undefined} />
               ))}
             </MobileList>
@@ -496,7 +552,7 @@ export function PlanPage({ id }: { id: string }) {
                     <td className="text-right">{fmtIDR(r.interest)}</td>
                     <td className="text-right font-medium">{fmtIDR(r.payment)}</td>
                     <td className="text-right">{fmtIDR(r.remaining)}</td>
-                    <td>{r.paid ? <span className="text-emerald-700">{t("cc.paidEntry", { no: r.paid.entry_no })}</span> : "—"}</td>
+                    <td>{r.paid ? <span className="text-emerald-700">{t("cc.paidEntry")}</span> : "—"}</td>
                   </tr>
                 ))}
               </tbody>

@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { ApiError, acceptInviteLink, forgotPassword, login, loginTOTP, register, resetPassword, useAuth, verifyEmail } from "@/lib/api"
 import { useT } from "@/lib/i18n"
+import { useEntrance } from "@/lib/motion"
 
 // safeNext is ?next= when it is a path on this site (never another origin).
 export function safeNext() {
@@ -18,17 +19,20 @@ export function safeNext() {
 // AuthLayout is the shared frame of every signed-out page: brand panel on desktop, form on the right.
 function AuthLayout({ title, hint, err, children }: { title: string; hint?: string; err?: FormError; children: ComponentChildren }) {
   const t = useT()
+  // The brand panel rises in once; the form side again on each new step (password, then 2FA).
+  const brand = useEntrance<HTMLDivElement>()
+  const form = useEntrance<HTMLDivElement>(title)
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
-      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-[#0052d9] via-[#1f66e5] to-[#5b95ff] p-12 text-white lg:flex lg:flex-col">
+    <div className="grid min-h-svh md:grid-cols-2">
+      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-[#0052d9] via-[#1f66e5] to-[#5b95ff] p-8 text-white md:flex md:flex-col lg:p-12">
         <div className="[&_a]:text-white [&_span]:bg-white [&_span]:text-primary">
           <Logo />
         </div>
-        <div className="mt-auto max-w-md">
-          <h2 className="text-3xl font-bold tracking-tight">{t("brand.tagline")}</h2>
+        <div ref={brand} className="mt-auto max-w-md">
+          <h2 data-enter className="text-3xl font-bold tracking-tight">{t("brand.tagline")}</h2>
           <ul className="mt-6 space-y-3 text-sm text-white/85">
             {[t("auth.perk1"), t("auth.perk2"), t("auth.perk3")].map((perk) => (
-              <li key={perk} className="flex gap-2">
+              <li key={perk} data-enter className="flex gap-2">
                 <Check className="mt-0.5 size-4 shrink-0" />
                 {perk}
               </li>
@@ -39,20 +43,20 @@ function AuthLayout({ title, hint, err, children }: { title: string; hint?: stri
         <div className="pointer-events-none absolute top-24 -right-10 size-40 rounded-full bg-white/10" />
       </aside>
 
-      <main className="flex flex-col bg-gradient-to-b from-[#eaf2ff] to-white px-4 py-10 lg:bg-none">
-        <div className="lg:hidden">
+      <main className="flex flex-col bg-gradient-to-b from-[#eaf2ff] to-white px-4 py-10 md:bg-none">
+        <div className="md:hidden">
           <Logo />
         </div>
-        <div className="m-auto w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          {hint && <p className="mt-1 text-sm text-muted-foreground">{hint}</p>}
+        <div ref={form} className="mx-auto mt-10 w-full max-w-sm sm:my-auto">
+          <h1 data-enter className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {hint && <p data-enter className="mt-1 text-sm text-muted-foreground">{hint}</p>}
           {err?.message && (
             <Alert variant="destructive" className="mt-6 rounded-sm">
               <AlertCircle />
               <AlertDescription>{err.message}</AlertDescription>
             </Alert>
           )}
-          {children}
+          <div data-enter>{children}</div>
         </div>
       </main>
     </div>
@@ -251,6 +255,7 @@ export function VerifyEmailPage() {
   const { user } = useAuth()
   const [state, setState] = useState<"busy" | "done" | FormError>("busy")
   useEffect(() => {
+    if (!token) return setState({ message: t("errors.invalid_link") })
     verifyEmail(token).then(() => setState("done"), (e) => setState(toFormError(e)))
   }, [])
   return (
@@ -272,6 +277,7 @@ export function JoinPage() {
   const [token] = useState(() => new URLSearchParams(location.search).get("token") ?? "")
   const [state, setState] = useState<"idle" | "busy" | "done" | FormError>("idle")
   useEffect(() => {
+    if (!token) return setState({ message: t("errors.invalid_link") })
     if (!user || state !== "idle") return
     setState("busy")
     acceptInviteLink(token).then(() => setState("done"), (e) => setState(toFormError(e)))
@@ -279,7 +285,7 @@ export function JoinPage() {
   const back = encodeURIComponent(`/join?token=${token}`)
   return (
     <AuthLayout title={t("join.title")} err={typeof state === "object" ? state : undefined}>
-      {ready && !user && (
+      {ready && !user && token && (
         <>
           <p className="mt-4 text-sm text-muted-foreground">{t("join.signIn")}</p>
           <div className="mt-4 grid gap-2">

@@ -65,7 +65,7 @@ export function ReconcilePage() {
   async function onSubmit(e: SubmitEvent) {
     e.preventDefault()
     if (!(actualSen >= 0)) {
-      setErr({ fields: { actual: "enter the amount you counted" } })
+      setErr({ fields: { actual: t("field.positiveAmount") } })
       return
     }
     setBusy(true)
@@ -78,7 +78,7 @@ export function ReconcilePage() {
       else {
         const entry = res.entry!
         const other = entry.lines.find((l) => l.account_id !== accountId)!
-        setOk(t("rec.posted", { amount: fmtIDR(Math.abs(res.diff)), account: `${other.code} · ${other.name}`, no: entry.entry_no }))
+        setOk(t("rec.posted", { amount: fmtIDR(Math.abs(res.diff)), account: other.name }))
       }
       setActual("")
       setReload((n) => n + 1)
@@ -137,6 +137,7 @@ export function ReconcilePage() {
                 inputMode="decimal"
                 value={actual}
                 onInput={(e) => setActual((e.target as HTMLInputElement).value)}
+                onBlur={() => actual.trim() && actualSen >= 0 && setActual(new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(actualSen / 100))}
                 error={err.fields?.actual}
               />
               {mode === "bank" && (

@@ -114,6 +114,13 @@ export function SelectPicker({ id, value, onChange, options, title, placeholder,
             autoFocus={false}
             value={q}
             onInput={(e) => setQ((e.target as HTMLInputElement).value)}
+            // Enter takes the first match, so typing "trans" + Enter picks Transportasi.
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !shown[0]) return
+              e.preventDefault()
+              onChange(shown[0].value)
+              setOpen(false)
+            }}
             placeholder={t("common.search")}
             aria-label={t("picker.searchIn", { title })}
             className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none md:h-9 md:text-sm"

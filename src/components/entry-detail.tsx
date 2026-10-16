@@ -1,4 +1,4 @@
-import { Clock, Loader2, Lock, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
+import { ArrowRight, Clock, Loader2, Lock, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useEffect, useState } from "preact/hooks"
 import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -61,9 +61,9 @@ function diff(before: Snapshot, after: Snapshot) {
   return out
 }
 
-function done(pending: boolean, close: () => void) {
+function done(pending: boolean, back: () => void) {
   toast(tr(pending ? "ed.sentForApproval" : "ed.saved"))
-  close()
+  back()
 }
 
 function SimpleEdit({ e, accounts, onDone }: { e: Entry; accounts: Account[]; onDone: (pending: boolean) => void }) {
@@ -197,10 +197,16 @@ export function LinesEdit({ e, accounts, onDone, save }: {
               onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
               <X />
             </Button>
-            <Input inputMode="decimal" aria-label={t("ed.debitOf", { n: i + 1 })} placeholder={t("glossary.debit.label")} value={r.debit}
-              onInput={(ev) => set(r.key, { debit: ev.currentTarget.value })} className="h-11 rounded-sm md:h-9" />
-            <Input inputMode="decimal" aria-label={t("ed.creditOf", { n: i + 1 })} placeholder={t("glossary.credit.label")} value={r.credit}
-              onInput={(ev) => set(r.key, { credit: ev.currentTarget.value })} className="h-11 rounded-sm md:h-9" />
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t("glossary.debit.label")}
+              <Input inputMode="decimal" aria-label={t("ed.debitOf", { n: i + 1 })} placeholder="0" value={r.debit}
+                onInput={(ev) => set(r.key, { debit: ev.currentTarget.value })} className="h-11 rounded-sm text-right tabular-nums text-foreground md:h-9" />
+            </label>
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t("glossary.credit.label")}
+              <Input inputMode="decimal" aria-label={t("ed.creditOf", { n: i + 1 })} placeholder="0" value={r.credit}
+                onInput={(ev) => set(r.key, { credit: ev.currentTarget.value })} className="h-11 rounded-sm text-right tabular-nums text-foreground md:h-9" />
+            </label>
           </div>
         ))}
         <Button type="button" variant="outline" className="rounded-sm"
@@ -226,6 +232,8 @@ function SaveButton({ busy, disabled }: { busy: boolean; disabled?: boolean }) {
   )
 }
 
+const who = (l: Entry["lines"][number]) => (l.contact_name ? `${l.name} (${l.contact_name})` : l.name)
+
 function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () => void; onDelete: () => void; onReverse: () => void }) {
   const t = useT()
   const e = d.entry
@@ -238,7 +246,7 @@ function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () =
     <div className="grid gap-4 pb-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge className={cn("rounded-sm", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{t(`kind.${e.kind}` as Key)}</Badge>
-        <span className="text-muted-foreground">#{e.entry_no} · {fmtDate(e.entry_date)}</span>
+        <span className="text-muted-foreground">{fmtDate(e.entry_date)}</span>
       </div>
       <p className="text-3xl font-semibold tracking-tight tabular-nums">{fmtIDR(total(e.lines))}</p>
       {e.description && <p>{e.description}</p>}
@@ -247,20 +255,30 @@ function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () =
       {d.change_pending && <Note icon={Clock}>{t("ed.changePending")}</Note>}
       {d.mirrored && <Note icon={Lock}>{t("ed.mirrored")}</Note>}
 
-      <table className="w-full text-sm tabular-nums [&_td]:py-1.5">
-        <thead className="text-left text-xs text-muted-foreground">
-          <tr><th className="font-normal">{t("rec.account")}</th><th className="text-right font-normal">{t("glossary.debit.label")}</th><th className="text-right font-normal">{t("glossary.credit.label")}</th></tr>
-        </thead>
-        <tbody className="divide-y">
-          {e.lines.map((l, i) => (
-            <tr key={i}>
-              <td>{l.code} · {l.name}{l.contact_name && <span className="text-muted-foreground"> ({l.contact_name})</span>}</td>
-              <td className="text-right">{l.debit ? fmtIDR(l.debit) : ""}</td>
-              <td className="text-right">{l.credit ? fmtIDR(l.credit) : ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="flex flex-wrap items-center gap-2 rounded-sm bg-muted/60 px-3 py-2 text-sm">
+        <span>{e.lines.filter((l) => l.credit > 0).map(who).join(", ")}</span>
+        <ArrowRight className="size-4 text-muted-foreground" aria-label={t("ed.flowTo")} />
+        <span>{e.lines.filter((l) => l.debit > 0).map(who).join(", ")}</span>
+      </p>
+
+      <details className="text-sm">
+        <summary className="cursor-pointer text-primary">{t("ed.showJournal")}</summary>
+        <p className="mt-2 text-xs text-muted-foreground">{t("ed.entryNo", { no: e.entry_no })}</p>
+        <table className="mt-1 w-full tabular-nums [&_td]:py-1.5">
+          <thead className="text-left text-xs text-muted-foreground">
+            <tr><th className="font-normal">{t("rec.account")}</th><th className="text-right font-normal">{t("glossary.debit.label")}</th><th className="text-right font-normal">{t("glossary.credit.label")}</th></tr>
+          </thead>
+          <tbody className="divide-y">
+            {e.lines.map((l, i) => (
+              <tr key={i}>
+                <td>{l.code} · {who(l)}</td>
+                <td className="text-right">{l.debit ? fmtIDR(l.debit) : ""}</td>
+                <td className="text-right">{l.credit ? fmtIDR(l.credit) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
 
       <div className="flex gap-2">
         {e.kind === "opening" ? (
@@ -331,9 +349,9 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
 
   async function reverse(e: Entry) {
     try {
-      const r = await reverseEntry(e.id)
+      await reverseEntry(e.id)
       onClose()
-      toast(t("ed.reversed", { no: e.entry_no, new: r.entry_no }))
+      toast(t("ed.reversedToast"))
     } catch (x) {
       setErr(toFormError(x))
     }
@@ -342,7 +360,7 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
   function remove(e: Entry) {
     onClose()
     deleteSoon(e.id).catch((x) => toast(toFormError(x).message ?? "", { tone: "error" }))
-    toast(t("ed.deleted", { no: e.entry_no }), { action: { label: t("common.undo"), run: () => undoDelete(e.id) } })
+    toast(t("ed.deletedToast", { what: e.description || fmtIDR(total(e.lines)) }), { action: { label: t("common.undo"), run: () => undoDelete(e.id) } })
   }
 
   const kind = d?.entry.kind
@@ -356,7 +374,7 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
         {d && editing && (
           <div className="grid gap-3 pb-2">
             {d.loan_status === "approved" && !d.mirrored && <Note icon={Clock}>{t("ed.needsApproval")}</Note>}
-            <Form e={d.entry} accounts={accounts} onDone={(pending) => done(pending, onClose)} />
+            <Form e={d.entry} accounts={accounts} onDone={(pending) => done(pending, () => (setEditing(false), getEntry(d.entry.id).then(setD, (x) => setErr(toFormError(x)))))} />
             <Button variant="ghost" onClick={() => setEditing(false)}>{t("common.cancel")}</Button>
           </div>
         )}

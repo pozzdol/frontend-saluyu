@@ -127,20 +127,24 @@ function RuleForm({ rule, accounts, onDone }: { rule?: RecurringRule; accounts: 
   const toOptions = active.filter(fits.to)
   const [from, setFrom] = useState(rule?.from_account_id ?? "")
   const [to, setTo] = useState(rule?.to_account_id ?? "")
+  // The money account defaults to the first one; the category or source waits for a choice,
+  // so "Netflix" never lands in Transportasi because that happened to be first.
   useEffect(() => {
-    if (!fromOptions.some((a) => a.id === from)) setFrom(fromOptions[0]?.id ?? "")
-    if (!toOptions.some((a) => a.id === to)) setTo(toOptions.find((a) => a.id !== fromOptions[0]?.id)?.id ?? "")
+    if (!fromOptions.some((a) => a.id === from)) setFrom(kind === "income" ? "" : fromOptions[0]?.id ?? "")
+    if (!toOptions.some((a) => a.id === to)) setTo(kind === "income" ? toOptions[0]?.id ?? "" : "")
   }, [kind, accounts])
 
   const form = useForm(async (v) => {
     const amount = toSen(v.amount)
     if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
+    if (!from || !to) throw new ApiError(400, "validation failed", undefined, "validation", { ...(!from && { from_account_id: "choose" }), ...(!to && { to_account_id: "choose" }) })
     await saveRecurring({
       name: v.name, kind, from_account_id: from, to_account_id: to, amount, frequency,
       day: frequency === "weekly" || frequency === "monthly" ? Number(day) : null,
       mode, start_date: v.start_date, end_date: v.end_date || null,
     }, rule?.id)
     onDone()
+    toast(t("rcr.saved", { name: v.name }))
     return ""
   })
 
@@ -152,7 +156,7 @@ function RuleForm({ rule, accounts, onDone }: { rule?: RecurringRule; accounts: 
     <form onSubmit={form.onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
       <div className="md:col-span-2"><Status err={form.err} ok="" /></div>
       <Segmented label={t("tx.type")} value={kind} onChange={setKind} className="md:col-span-2"
-        items={(["expense", "income", "transfer"] as Kind[]).map((k) => ({ value: k, label: t(kinds[k].label) }))} />
+        items={(["expense", "income", "transfer"] as Kind[]).map((k) => ({ value: k, label: t(k === "expense" ? "qa.out" : k === "income" ? "qa.in" : "qa.move") }))} />
       <Field name="name" label={t("rcr.name")} defaultValue={rule?.name} placeholder={kind === "income" ? "Gaji" : "Netflix"} error={form.err.fields?.name} />
       <AmountField name="amount" label={t("common.amount")} defaultValue={rule ? rupiah(rule.amount) : ""} error={form.err.fields?.amount} />
       <SelectField name="from" label={t(fits.fromLabel)} value={from} onChange={setFrom} options={accountOptions(fromOptions)} error={form.err.fields?.from_account_id} />
@@ -197,10 +201,15 @@ export function RecurringPage() {
   const name = (id: string) => accounts.find((a) => a.id === id)?.name ?? ""
   const done = () => (setEditing(null), setReload((n) => n + 1))
 
+  // Delete at once with Undo, the same as a transaction: Undo saves the schedule again.
   async function remove(r: RecurringRule) {
     try {
       await deleteRecurring(r.id)
       done()
+      const { name, kind, from_account_id, to_account_id, amount, frequency, day, mode, next_date, end_date } = r
+      toast(t("rcr.deleted", { name }), {
+        action: { label: t("common.undo"), run: () => saveRecurring({ name, kind, from_account_id, to_account_id, amount, frequency, day, mode, start_date: next_date, end_date }).then(done, (e) => setErr(toFormError(e))) },
+      })
     } catch (e) {
       setErr(toFormError(e))
     }
@@ -238,8 +247,8 @@ export function RecurringPage() {
                   value={fmtIDR(r.amount)}
                   actions={
                     <span className="flex">
-                      <Button variant="ghost" size="icon-sm" aria-label={t("rcr.editRule", { name: r.name })} onClick={() => setEditing(r)}><Pencil /></Button>
-                      <Button variant="ghost" size="icon-sm" aria-label={t("rcr.deleteRule", { name: r.name })} onClick={() => remove(r)}><Trash2 /></Button>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("rcr.editRule", { name: r.name })} title={t("rcr.editRule", { name: r.name })} onClick={() => setEditing(r)}><Pencil /></Button>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("rcr.deleteRule", { name: r.name })} title={t("rcr.deleteRule", { name: r.name })} onClick={() => remove(r)}><Trash2 /></Button>
                     </span>
                   } />
               ))}

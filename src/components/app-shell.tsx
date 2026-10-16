@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, ChevronRight, CreditCard, FileUp, NotebookPen, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeft, ArrowLeftRight, BookOpen, ChevronRight, CreditCard, FileUp, NotebookPen, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -11,24 +11,38 @@ import { cn } from "@/lib/utils"
 import { QuickAdd } from "@/components/quick-add"
 import { Toaster } from "@/components/toast"
 
-const nav: { href: string; label: Key; icon: typeof LayoutDashboard }[] = [
-  { href: "/app/dashboard", label: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/app/transactions", label: "nav.transactions", icon: ArrowLeftRight },
-  { href: "/app/budgets", label: "nav.budgets", icon: PiggyBank },
-  { href: "/app/cards", label: "nav.cards", icon: CreditCard },
-  { href: "/app/recurring", label: "nav.recurring", icon: Repeat },
-  { href: "/app/import", label: "nav.import", icon: FileUp },
-  { href: "/app/contacts", label: "nav.contacts", icon: Users },
-  { href: "/app/groups", label: "nav.groups", icon: UsersRound },
-  { href: "/app/reports", label: "nav.reports", icon: FileText },
-  { href: "/app/accounts", label: "nav.accounts", icon: BookOpen },
-  { href: "/app/reconcile", label: "nav.reconcile", icon: ScanSearch },
-  { href: "/account", label: "nav.profile", icon: UserRound },
+type NavItem = { href: string; label: Key; icon: typeof LayoutDashboard; also?: string[] }
+
+// Grouped by what people come to do, so twelve links read as five short lists.
+// "also": pages reached from this item that should keep it highlighted.
+const groups: { label: Key; items: NavItem[] }[] = [
+  { label: "nav.groupMoney", items: [
+    { href: "/app/dashboard", label: "nav.dashboard", icon: LayoutDashboard },
+    { href: "/app/transactions", label: "nav.transactions", icon: ArrowLeftRight },
+    { href: "/app/recurring", label: "nav.recurring", icon: Repeat },
+    { href: "/app/import", label: "nav.import", icon: FileUp },
+  ] },
+  { label: "nav.groupPlan", items: [
+    { href: "/app/budgets", label: "nav.budgets", icon: PiggyBank },
+    { href: "/app/cards", label: "nav.cards", icon: CreditCard, also: ["/app/installments"] },
+  ] },
+  { label: "nav.groupPeople", items: [
+    { href: "/app/contacts", label: "nav.contacts", icon: Users },
+    { href: "/app/groups", label: "nav.groups", icon: UsersRound },
+  ] },
+  { label: "nav.groupCheck", items: [
+    { href: "/app/reports", label: "nav.reports", icon: FileText },
+    { href: "/app/reconcile", label: "nav.reconcile", icon: ScanSearch },
+  ] },
+  { label: "nav.groupSetup", items: [
+    { href: "/app/accounts", label: "nav.accounts", icon: BookOpen },
+    { href: "/account", label: "nav.profile", icon: UserRound, also: ["/app/privacy"] },
+  ] },
 ]
 
 // Tools that rewrite the books rather than record everyday money: out of the main list,
 // one tap away under "Advanced".
-const advanced: typeof nav = [
+const advanced: NavItem[] = [
   { href: "/app/opening", label: "nav.opening", icon: Flag },
   { href: "/app/journal", label: "nav.journal", icon: NotebookPen },
   { href: "/app/trial-balance", label: "nav.trialBalance", icon: Scale },
@@ -38,7 +52,8 @@ const advancedKey = "saluyu.nav.advanced"
 
 function NavLinks({ path, inbox }: { path: string; inbox: number }) {
   const t = useT()
-  const isActive = (href: string) => path === href || path.startsWith(href + "/")
+  const under = (href: string) => path === href || path.startsWith(href + "/")
+  const isActive = (href: string, also: string[] = []) => under(href) || also.some(under)
   const inAdvanced = advanced.some((a) => isActive(a.href))
   // The group remembers whether you left it open, across pages and re-renders; it also
   // opens by itself on its own pages.
@@ -57,8 +72,8 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
       /* private mode: remembered for this page only */
     }
   }
-  const link = ({ href, label, icon: Icon }: (typeof nav)[number]) => {
-        const active = isActive(href)
+  const link = ({ href, label, icon: Icon, also }: NavItem) => {
+        const active = isActive(href, also)
         return (
           <a
             key={href}
@@ -82,7 +97,12 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
   }
   return (
     <nav className="flex flex-col gap-1 px-3" aria-label={t("nav.console")}>
-      {nav.map(link)}
+      {groups.map((g, i) => (
+        <div key={g.label} className={cn("flex flex-col gap-1", i > 0 && "mt-3")}>
+          <p className="px-3 pb-0.5 text-xs font-medium text-muted-foreground">{t(g.label)}</p>
+          {g.items.map(link)}
+        </div>
+      ))}
       {/* Native disclosure: no script, keyboard and screen readers work; open on its own pages. */}
       <details open={open} onToggle={(e) => toggle((e.currentTarget as HTMLDetailsElement).open)} className="group mt-2">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-sm px-3 text-sm text-muted-foreground hover:text-primary lg:min-h-9 [&::-webkit-details-marker]:hidden">
@@ -97,8 +117,9 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
 
 // AppShell is the console layout: a fixed sidebar on desktop; on phones a top bar whose
 // menu button opens the same links in a drawer from the left.
-export function AppShell({ title, term, actions, children }: {
+export function AppShell({ title, term, actions, back, children }: {
   title: string
+  back?: { href: string; label: string } // a detail page's way back, shown above the title
   term?: TermKey // shows an ⓘ next to the title explaining the page's finance term
   actions?: ComponentChildren
   children: ComponentChildren
@@ -149,10 +170,17 @@ export function AppShell({ title, term, actions, children }: {
           {/* Fixed-height title row, controls centred in it: the title sits at the same spot on every
               page whatever controls the page puts next to it (they wrap below it on phones). */}
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-6 pb-5 md:min-h-[5.75rem] lg:px-8 lg:pt-8 lg:pb-6">
-            <h1 className="flex items-center gap-1.5 text-2xl font-semibold tracking-tight">
-              {title}
-              {term && <Info k={term} />}
-            </h1>
+            <div className="grid min-w-0 gap-1">
+              {back && (
+                <a href={back.href} className="flex w-fit items-center gap-1 text-sm text-primary hover:underline">
+                  <ArrowLeft className="size-4" /> {back.label}
+                </a>
+              )}
+              <h1 className="flex items-center gap-1.5 text-2xl font-semibold tracking-tight">
+                {title}
+                {term && <Info k={term} />}
+              </h1>
+            </div>
             {actions}
           </div>
         </header>

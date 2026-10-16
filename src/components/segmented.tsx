@@ -22,7 +22,8 @@ export function Segmented<T extends string>({ items, value, onChange, label, cla
           aria-selected={value === it.value}
           onClick={() => onChange(it.value)}
           className={cn(
-            "flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-sm px-3 text-sm whitespace-nowrap text-muted-foreground md:min-h-8 md:flex-none md:px-4",
+            // Labels may wrap on a phone rather than spill out of their cell; one line from md up.
+            "flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-center text-sm leading-tight text-muted-foreground md:min-h-8 md:flex-none md:px-4 md:py-0 md:whitespace-nowrap",
             // No font-weight change: bolder text is wider and would nudge the neighbouring tabs.
             value === it.value && "bg-white text-primary shadow-sm",
           )}

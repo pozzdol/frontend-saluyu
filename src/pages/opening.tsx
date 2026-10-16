@@ -24,6 +24,11 @@ import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { typeDot } from "@/pages/accounts"
 import { Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
+import { toast } from "@/components/toast"
+
+// Amounts read like everywhere else: "400.000", tidied when the field is left.
+const plain = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })
+const tidy = (v: string) => { const s = toSen(v); return v.trim() && s >= 0 ? plain.format(s / 100) : v }
 
 // Amount inputs are keyed by account id, or "accountId:contactId" for a person's receivable/payable.
 const key = (accountId: string, contactId?: string | null) => (contactId ? `${accountId}:${contactId}` : accountId)
@@ -50,7 +55,7 @@ export function OpeningPage({ user }: { user: User }) {
         setOpeningState(o)
         // Prefill from an existing opening entry, in rupiah with a decimal comma.
         const prefill: Record<string, string> = {}
-        for (const l of o.entry?.lines ?? []) prefill[key(l.account_id, l.contact_id)] = String((l.debit || l.credit) / 100).replace(".", ",")
+        for (const l of o.entry?.lines ?? []) prefill[key(l.account_id, l.contact_id)] = plain.format((l.debit || l.credit) / 100)
         setAmounts(prefill)
       })
       .catch((e) => setErr(toFormError(e)))
@@ -88,7 +93,9 @@ export function OpeningPage({ user }: { user: User }) {
         ...personItems.filter((it) => it.amount > 0).map(({ account_id, contact_id, amount }) => ({ account_id, contact_id, amount })),
       ]
       await setOpening({ start_date: date, items })
-      route("/app/dashboard")
+      // The first time opens the console; a later correction stays here so it can be checked.
+      if (firstTime) route("/app/dashboard")
+      else toast(t("open.savedToast"))
     } catch (e) {
       setErr(toFormError(e))
     } finally {
@@ -159,7 +166,8 @@ export function OpeningPage({ user }: { user: User }) {
                               value={amounts[a.id] ?? ""}
                               aria-invalid={invalid.includes(a.name)}
                               onInput={(e) => setAmounts((m) => ({ ...m, [a.id]: (e.target as HTMLInputElement).value }))}
-                              className="h-11 rounded-sm text-right tabular-nums md:h-9"
+                              onBlur={(e) => setAmounts((m) => ({ ...m, [a.id]: tidy((e.target as HTMLInputElement).value) }))}
+                              className="h-11 rounded-sm bg-background text-right tabular-nums md:h-9"
                             />
                           </td>
                         </tr>
@@ -174,7 +182,7 @@ export function OpeningPage({ user }: { user: User }) {
               <h2 className="font-semibold"><Term k="receivable">{t("open.people")}</Term></h2>
               {contacts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Someone owed you money, or you owed someone, on this date?{" "}
+                  {t("open.noContacts")}{" "}
                   <a href="/app/contacts" className="text-primary hover:underline">{t("open.addContacts")}</a>{t("open.thenBack")}
                 </p>
               ) : (
@@ -193,7 +201,8 @@ export function OpeningPage({ user }: { user: User }) {
                                 placeholder="0"
                                 value={amounts[key(a.id, c.id)] ?? ""}
                                 onInput={(e) => setAmounts((m) => ({ ...m, [key(a.id, c.id)]: (e.target as HTMLInputElement).value }))}
-                                className="h-11 rounded-sm text-right tabular-nums"
+                                onBlur={(e) => setAmounts((m) => ({ ...m, [key(a.id, c.id)]: tidy((e.target as HTMLInputElement).value) }))}
+                                className="h-11 rounded-sm bg-background text-right tabular-nums"
                               />
                             </label>
                           ) : null,
@@ -223,7 +232,8 @@ export function OpeningPage({ user }: { user: User }) {
                                 placeholder="0"
                                 value={amounts[key(a.id, c.id)] ?? ""}
                                 onInput={(e) => setAmounts((m) => ({ ...m, [key(a.id, c.id)]: (e.target as HTMLInputElement).value }))}
-                                className="h-9 rounded-sm text-right tabular-nums"
+                                onBlur={(e) => setAmounts((m) => ({ ...m, [key(a.id, c.id)]: tidy((e.target as HTMLInputElement).value) }))}
+                                className="h-9 rounded-sm bg-background text-right tabular-nums"
                               />
                             </td>
                           ) : null,

@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact"
 import { useT } from "@/lib/i18n"
 import { cn, fmtIDR } from "@/lib/utils"
+import { useTween } from "@/lib/motion"
 
 // Charts are plain SVG. Each one is a <figure> whose numbers are also written out (legend
 // or labels) and available as a table, so nothing depends on colour or on seeing the shape.
@@ -31,6 +32,13 @@ function Figure({ caption, children }: { caption: ComponentChildren; children: C
   )
 }
 
+// Sweep covers the slices with the empty track and pulls it away clockwise once, when the
+// chart first appears.
+function Sweep({ r, c }: { r: number; c: number }) {
+  const ref = useTween<SVGCircleElement>(1, (el, n) => el.setAttribute("stroke-dashoffset", String(-n * c)), { duration: 1100 })
+  return <circle ref={ref} cx="80" cy="80" r={r} fill="none" stroke="#e6ebf5" strokeWidth="25" strokeDasharray={`${c} ${c}`} />
+}
+
 // Donut: share of a whole. The largest seven slices are shown, the rest grouped as "other".
 export function Donut({ caption, items, total, otherLabel }: { caption: ComponentChildren; items: Item[]; total: number; otherLabel: string }) {
   const t = useT()
@@ -53,6 +61,7 @@ export function Donut({ caption, items, total, otherLabel }: { caption: Componen
               offset += len
               return el
             })}
+            <Sweep r={r} c={c} />
           </svg>
           <ul className="grid w-full min-w-0 gap-1.5 text-sm sm:w-auto sm:flex-1">
             {shown.map((s, i) => (
@@ -70,6 +79,12 @@ export function Donut({ caption, items, total, otherLabel }: { caption: Componen
   )
 }
 
+// Bar grows from the baseline to its height, and on to a new height when the value changes.
+function Bar({ x, h, width, delay, top }: { x: number; h: number; width: number; delay: number; top: boolean }) {
+  const ref = useTween<SVGRectElement>(h, (el, n) => (el.setAttribute("y", String(42 - n)), el.setAttribute("height", String(n))), { delay })
+  return <rect ref={ref} x={x} width={width} rx="0.4" fill={top ? "#2563eb" : "#93b4f5"} />
+}
+
 // Bars: one value per step (days of a period, or periods). The largest bar carries its value.
 export function Bars({ caption, items, head, compact }: { caption: ComponentChildren; items: Item[]; head: [string, string]; compact?: (label: string) => string }) {
   const t = useT()
@@ -82,7 +97,7 @@ export function Bars({ caption, items, head, compact }: { caption: ComponentChil
       <svg viewBox="0 0 100 44" preserveAspectRatio="none" className="h-36 w-full" aria-hidden="true">
         {items.map((it, i) => {
           const h = (it.value / max) * 40
-          return <rect key={it.label} x={i * w + w * 0.15} y={42 - h} width={w * 0.7} height={h} rx="0.4" fill={i === top ? "#2563eb" : "#93b4f5"} />
+          return <Bar key={it.label} x={i * w + w * 0.15} h={h} width={w * 0.7} delay={i * 12} top={i === top} />
         })}
         <line x1="0" y1="42" x2="100" y2="42" stroke="#cbd5e1" strokeWidth="0.3" />
       </svg>

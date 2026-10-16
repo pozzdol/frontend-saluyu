@@ -2,7 +2,9 @@ import { X } from "lucide-react"
 import { useState } from "preact/hooks"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/api"
-import { useT, type Key } from "@/lib/i18n"
+import { chooseLocale, useLocale, useT, type Key } from "@/lib/i18n"
+import { install, isInstalled } from "@/lib/install"
+import { cn } from "@/lib/utils"
 
 // Saluyu mark: two blades, point-symmetric around (12, 12) on a 24 grid. Colour comes from currentColor.
 export function LogoMark({ className }: { className?: string }) {
@@ -24,21 +26,42 @@ export function Logo() {
   )
 }
 
+const promoKey = "saluyu.promo.closed"
+const promoClosed = () => { try { return localStorage.getItem(promoKey) === "1" } catch { return false } }
+
+// PromoBar offers "add to home screen". It installs for real where the browser allows, explains
+// the Share-menu steps elsewhere, hides once installed, and stays closed once closed.
 export function PromoBar() {
   const t = useT()
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(() => !promoClosed() && !isInstalled())
+  const [howTo, setHowTo] = useState<"" | "ios" | "manual">("")
   if (!open) return null
+  const close = () => {
+    setOpen(false)
+    try { localStorage.setItem(promoKey, "1") } catch { /* private mode */ }
+  }
+  const tryInstall = async () => {
+    const r = await install()
+    if (r === "accepted") close()
+    else if (r === "ios" || r === "manual") setHowTo(r)
+  }
   return (
-    <div className="relative bg-gradient-to-r from-[#dbe8ff] via-[#eef4ff] to-[#dbe8ff] px-10 py-2 text-center text-xs text-foreground sm:text-sm">
-      <span className="font-medium">{t("site.promoLive")}</span>{" "}
-      <span className="text-muted-foreground">{t("site.promoFree")}</span>{" "}
-      <a href="/register" className="font-medium text-primary hover:underline">
-        {t("site.promoClaim")}
-      </a>
+    <div role="region" aria-label={t("site.promoLive")} className="relative bg-gradient-to-r from-[#dbe8ff] via-[#eef4ff] to-[#dbe8ff] px-10 py-2 text-center text-xs text-foreground sm:text-sm">
+      {howTo ? (
+        <span>{t(howTo === "ios" ? "site.installIos" : "site.installManual")}</span>
+      ) : (
+        <>
+          <span className="font-medium">{t("site.promoLive")}</span>{" "}
+          <span className="text-muted-foreground">{t("site.promoFree")}</span>{" "}
+          <button type="button" onClick={tryInstall} className="font-medium text-primary hover:underline">
+            {t("site.promoClaim")}
+          </button>
+        </>
+      )}
       <button
         type="button"
         aria-label={t("site.closePromo")}
-        onClick={() => setOpen(false)}
+        onClick={close}
         className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
       >
         <X className="size-4" />
@@ -74,6 +97,7 @@ export function SiteHeader() {
   const t = useT()
   const { user } = useAuth()
   return (
+    <>
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-8 px-4">
         <Logo />
@@ -101,25 +125,45 @@ export function SiteHeader() {
           )}
         </div>
       </div>
-      {/* Phones: the same section links in a second row that scrolls sideways if needed. */}
-      <nav aria-label={t("site.sections")} className="flex gap-5 overflow-x-auto border-t px-4 py-2 text-sm md:hidden">
-        {nav.map((n) => (
-          <a key={n.href} href={n.href} onClick={onSectionLink} className="shrink-0 py-1 text-foreground/80 hover:text-primary">
-            {t(n.label)}
-          </a>
-        ))}
-      </nav>
     </header>
+    {/* Phones: the same section links in a row under the header that scrolls away with the page. */}
+    <nav aria-label={t("site.sections")} className="flex gap-5 overflow-x-auto border-b bg-background px-4 py-2 text-sm md:hidden">
+      {nav.map((n) => (
+        <a key={n.href} href={n.href} onClick={onSectionLink} className="shrink-0 py-1 text-foreground/80 hover:text-primary">
+          {t(n.label)}
+        </a>
+      ))}
+    </nav>
+    </>
   )
 }
 
 export function SiteFooter() {
   const t = useT()
+  const locale = useLocale()
   return (
     <footer className="border-t bg-[#f7f8fa]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-10 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <Logo />
-        <p>{t("site.footer", { year: new Date().getFullYear() })}</p>
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-10 text-sm text-muted-foreground sm:grid-cols-[1fr_auto] sm:items-start">
+        <div className="grid gap-3">
+          <Logo />
+          <p>{t("site.footer", { year: new Date().getFullYear() })}</p>
+        </div>
+        <div className="grid gap-4 sm:justify-items-end">
+          <nav aria-label={t("site.footerLinks")} className="flex flex-wrap gap-x-5 gap-y-2">
+            {nav.map((n) => (
+              <a key={n.href} href={n.href} onClick={onSectionLink} className="hover:text-primary">{t(n.label)}</a>
+            ))}
+            <a href="/login" className="hover:text-primary">{t("site.signIn")}</a>
+          </nav>
+          <div role="group" aria-label={t("prof.language")} className="flex items-center gap-1">
+            {(["id", "en"] as const).map((l) => (
+              <button key={l} type="button" aria-pressed={locale === l} onClick={() => chooseLocale(l)}
+                className={cn("h-9 rounded-sm px-3 hover:text-primary", locale === l && "bg-background font-medium text-foreground shadow-sm")}>
+                {l === "id" ? "Bahasa Indonesia" : "English"}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </footer>
   )

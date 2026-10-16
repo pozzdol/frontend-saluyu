@@ -1,4 +1,4 @@
-import { Check, Copy, Link2, Loader2, LogOut, Mail, MessageCircle, Plus, ShieldCheck, X } from "lucide-react"
+import { Check, Copy, Link2, Loader2, LogOut, Mail, MessageCircle, Pencil, Plus, ShieldCheck, X } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
 import { Field, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -18,6 +18,7 @@ import {
   groupSummary,
   inviteToGroup,
   leaveGroup,
+  renameGroup,
   listAccounts,
   listGroups,
   perContact,
@@ -34,10 +35,11 @@ import {
   type Period,
   type User,
 } from "@/lib/api"
-import { cn, fmtIDR } from "@/lib/utils"
+import { cn, fmtIDR, fmtPercent } from "@/lib/utils"
 import { fmtDate, fmtPeriod } from "@/components/picker"
 import { t, useT, type Key } from "@/lib/i18n"
 import { toast } from "@/components/toast"
+import { Input } from "@/components/ui/input"
 
 // What a pending loan means for me, in words.
 function loanText(l: InboxLoan) {
@@ -165,7 +167,7 @@ function SummaryTable({ group, date, onPeriod }: { group: Group; date: string; o
                   [t("grp.income"), fmtIDR(s.income)],
                   [t("grp.expense"), fmtIDR(s.expense)],
                   [t("grp.surplus"), fmtIDR(s.surplus)],
-                  [t("grp.saved"), `${(s.savings_rate * 100).toFixed(0)}%`],
+                  [t("grp.saved"), fmtPercent(s.savings_rate, 0)],
                   [t("grp.budgetUsed"), s.budget > 0 ? `${Math.round((s.budget_actual / s.budget) * 100)}%` : "—"],
                   [t("grp.assets"), fmtIDR(s.assets)],
                 ].map(([k, v]) => (
@@ -202,7 +204,7 @@ function SummaryTable({ group, date, onPeriod }: { group: Group; date: string; o
                 <td className="text-right">{fmtIDR(s.income)}</td>
                 <td className="text-right">{fmtIDR(s.expense)}</td>
                 <td className={cn("text-right", s.surplus < 0 && "text-rose-700")}>{fmtIDR(s.surplus)}</td>
-                <td className="text-right">{(s.savings_rate * 100).toFixed(0)}%</td>
+                <td className="text-right">{fmtPercent(s.savings_rate, 0)}</td>
                 <td className="text-right">
                   {s.budget > 0 ? (
                     <span className={cn(s.budget_actual > s.budget && "text-rose-700")}>
@@ -262,6 +264,7 @@ function GroupCard({ group, me, date, onChange }: { group: Group; me: User; date
   const [period, setPeriod] = useState<Period | null>(null)
   const [, setDate] = usePeriodDate()
   const [leaving, setLeaving] = useState(false)
+  const [naming, setNaming] = useState(false)
   const [err, setErr] = useState<FormError>({})
   const invite = useForm(async (v, el) => {
     const inv = await inviteToGroup(group.id, v.email)
@@ -275,8 +278,10 @@ function GroupCard({ group, me, date, onChange }: { group: Group; me: User; date
     try {
       await fn()
       onChange()
+      return true
     } catch (e) {
       setErr(toFormError(e))
+      return false
     }
   }
 
@@ -284,11 +289,26 @@ function GroupCard({ group, me, date, onChange }: { group: Group; me: User; date
     <Card className="rounded-sm">
       <CardContent className="grid gap-5">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="mr-auto text-lg font-semibold">{group.name}</h2>
+          {naming ? (
+            <form className="mr-auto flex flex-wrap items-center gap-2" onSubmit={(e) => {
+              e.preventDefault()
+              const name = ((e.currentTarget as HTMLFormElement).elements.namedItem("name") as HTMLInputElement).value
+              run(() => renameGroup(group.id, name)).then((ok) => ok && (setNaming(false), toast(t("grp.renamed", { name: name.trim() }))))
+            }}>
+              <Input name="name" defaultValue={group.name} autoFocus aria-label={t("grp.groupName")} className="h-9 w-48 rounded-sm" />
+              <Button type="submit" size="sm" className="rounded-sm">{t("common.save")}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setNaming(false)}>{t("common.cancel")}</Button>
+            </form>
+          ) : (
+            <h2 className="mr-auto flex items-center gap-1 text-lg font-semibold">
+              {group.name}
+              <Button variant="ghost" size="icon-sm" aria-label={t("grp.rename")} title={t("grp.rename")} onClick={() => setNaming(true)}><Pencil /></Button>
+            </h2>
+          )}
           <InviteByLink group={group} />
           {leaving ? (
             <span className="flex gap-1">
-              <Button size="sm" variant="destructive" onClick={() => run(() => leaveGroup(group.id))}>{t("grp.leaveGroup")}</Button>
+              <Button size="sm" variant="destructive" onClick={() => run(() => leaveGroup(group.id)).then((ok) => ok && toast(t("grp.left", { name: group.name })))}>{t("grp.leaveGroup")}</Button>
               <Button size="sm" variant="ghost" onClick={() => setLeaving(false)}>{t("common.cancel")}</Button>
             </span>
           ) : (
@@ -357,7 +377,8 @@ export function GroupsPage({ user }: { user: User }) {
     const g = await createGroup(v.name)
     el.reset()
     changed()
-    return t("grp.created", { name: g.name })
+    toast(t("grp.created", { name: g.name }))
+    return ""
   })
 
   async function answer(inviteId: string, accept: boolean) {

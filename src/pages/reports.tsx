@@ -25,13 +25,15 @@ import {
   type TaxSummary,
 } from "@/lib/api"
 import { t, useT } from "@/lib/i18n"
-import { cn, fmtIDR } from "@/lib/utils"
+import { cn, fmtIDR, todayISO } from "@/lib/utils"
+import { toast } from "@/components/toast"
 
 const views = { pl: "report.pl", bs: "report.bs", cf: "report.cf", tax: "report.tax" } as const
 type View = keyof typeof views
 const viewTerm: Record<View, TermKey> = { pl: "incomeStatement", bs: "balanceSheet", cf: "cashFlow", tax: "asset" }
 
-const money = (v: number) => <td className="text-right whitespace-nowrap">{fmtIDR(v)}</td>
+const money = (v: number, extra?: string) => <td className={cn("text-right whitespace-nowrap", extra)}>{fmtIDR(v)}</td>
+const wide = "max-md:hidden" // comparison columns
 
 // Section: a heading row, its accounts, then a total row. With compare, two more columns:
 // the previous period and the average of the three before.
@@ -42,15 +44,15 @@ function Section({ title, term, rows, total, compare, totalLabel }: { title: str
       <tr className="bg-[#f7f8fa] font-medium"><td colSpan={cols}>{term ? <Term k={term}>{title}</Term> : title}</td></tr>
       {rows.map((r) => (
         <tr key={r.account_id}>
-          <td className="pl-8!">{r.code} · {r.name}</td>
+          <td className="pl-8!"><a href={`/app/accounts/${r.account_id}`} className="hover:text-primary hover:underline print:no-underline">{r.name}</a></td>
           {money(r.amount)}
-          {compare && <>{money(r.prev ?? 0)}{money(r.avg3 ?? 0)}</>}
+          {compare && <>{money(r.prev ?? 0, wide)}{money(r.avg3 ?? 0, wide)}</>}
         </tr>
       ))}
       <tr className="font-semibold">
         <td>{totalLabel ?? t("report.totalOf", { name: title.toLowerCase() })}</td>
         {money(total)}
-        {compare && <>{money(compare[0])}{money(compare[1])}</>}
+        {compare && <>{money(compare[0], wide)}{money(compare[1], wide)}</>}
       </tr>
     </>
   )
@@ -58,22 +60,25 @@ function Section({ title, term, rows, total, compare, totalLabel }: { title: str
 
 function Total({ label, value, more }: { label: ComponentChildren; value: number; more?: number[] }) {
   return (
-    <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td>{money(value)}{more?.map((v, i) => <td key={i} className="text-right whitespace-nowrap">{fmtIDR(v)}</td>)}</tr>
+    <tr className="bg-[#eaf2ff]/60 font-semibold"><td>{label}</td>{money(value)}{more?.map((v, i) => <td key={i} className={cn("text-right whitespace-nowrap", wide)}>{fmtIDR(v)}</td>)}</tr>
   )
 }
 
-// CloseBooks locks every entry up to the end of a period; a correction then goes in as a
-// reversing or manual journal entry in an open period.
+// CloseBooks locks every entry up to the end of a finished period; a correction then goes in as
+// a reversing or manual journal entry in an open period. Closing asks first: it blocks edits.
 function CloseBooks({ periodEnd }: { periodEnd: string }) {
   const t = useT()
   const { user } = useAuth()
   const [err, setErr] = useState<FormError>({})
   const [busy, setBusy] = useState(false)
+  const [asking, setAsking] = useState(false)
   const run = async (until: string | null) => {
     setBusy(true)
     setErr({})
     try {
       await setLock(until)
+      setAsking(false)
+      toast(until ? t("lock.closedToast", { date: fmtDate(until) }) : t("lock.reopenedToast"))
     } catch (e) {
       setErr(toFormError(e))
     } finally {
@@ -81,19 +86,31 @@ function CloseBooks({ periodEnd }: { periodEnd: string }) {
     }
   }
   const locked = user?.locked_until
+  const finished = periodEnd < todayISO() // a running period cannot be closed: today is in it
   return (
     <section className="grid gap-2 rounded-sm border bg-card p-4 print:hidden">
       <h2 className="flex items-center gap-2 font-semibold"><Lock className="size-4" /> {t("lock.title")}</h2>
       <p className="text-sm text-muted-foreground">{locked ? t("lock.closedUntil", { date: fmtDate(locked) }) : t("lock.open")}</p>
       <Status err={err} ok="" />
-      <div className="flex flex-wrap gap-2">
-        {(!locked || locked < periodEnd) && (
-          <Button variant="outline" size="sm" className="rounded-sm" disabled={busy} onClick={() => run(periodEnd)}>
-            {busy && <Loader2 className="animate-spin" />}{t("lock.close", { date: fmtDate(periodEnd) })}
-          </Button>
-        )}
-        {locked && <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(null)}>{t("lock.reopen")}</Button>}
-      </div>
+      {asking ? (
+        <div className="grid gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>{t("lock.confirm", { date: fmtDate(periodEnd) })}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" className="rounded-sm" disabled={busy} onClick={() => run(periodEnd)}>
+              {busy && <Loader2 className="animate-spin" />}{t("lock.confirmYes")}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAsking(false)}>{t("common.cancel")}</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {(!locked || locked < periodEnd) && finished && (
+            <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAsking(true)}>{t("lock.close", { date: fmtDate(periodEnd) })}</Button>
+          )}
+          {locked && <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(null)}>{t("lock.reopen")}</Button>}
+        </div>
+      )}
+      {!finished && (!locked || locked < periodEnd) && <p className="text-sm text-muted-foreground">{t("lock.notFinished")}</p>}
       <p className="text-xs text-muted-foreground">{t("lock.hint")}</p>
     </section>
   )
@@ -176,7 +193,7 @@ export function ReportsPage() {
         {view === "pl" && pl && (
           <TableCard>
             {pl.expense_compare && (
-              <thead><tr><th /><th className="text-right!">{t("report.thisPeriod")}</th><th className="text-right!">{t("report.lastPeriod")}</th><th className="text-right!">{t("report.avg3")}</th></tr></thead>
+              <thead><tr><th /><th className="text-right!">{t("report.thisPeriod")}</th><th className={cn("text-right!", wide)}>{t("report.lastPeriod")}</th><th className={cn("text-right!", wide)}>{t("report.avg3")}</th></tr></thead>
             )}
             <tbody className="tabular-nums">
               <Section title={t("report.revenue")} term="revenue" rows={pl.revenue} total={pl.revenue_total} compare={pl.revenue_compare} />

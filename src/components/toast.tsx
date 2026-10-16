@@ -1,5 +1,7 @@
 import { X } from "lucide-react"
-import { useEffect, useSyncExternalStore } from "preact/compat"
+import { animate } from "animejs"
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "preact/compat"
+import { calm } from "@/lib/motion"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -23,6 +25,14 @@ export function Toaster() {
   const t = useT()
   const item = useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => current)
 
+  // Each new message rises into place, so a replaced toast still reads as new.
+  const box = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!box.current || calm()) return
+    const a = animate(box.current, { y: [16, 0], opacity: [0, 1], duration: 320, ease: "outCubic" })
+    return () => void a.revert()
+  }, [item?.id])
+
   useEffect(() => {
     if (!item) return
     const timer = window.setTimeout(() => current?.id === item.id && dismiss(), item.action ? 8000 : 4000)
@@ -32,7 +42,7 @@ export function Toaster() {
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[60] flex justify-center px-4 max-md:bottom-24 print:hidden">
       {item && (
-        <div role={item.tone === "error" ? "alert" : "status"}
+        <div ref={box} role={item.tone === "error" ? "alert" : "status"}
           className={cn("pointer-events-auto flex min-h-12 w-full max-w-md items-center gap-2 rounded-sm py-1 pr-1 pl-4 text-sm text-white shadow-lg",
             item.tone === "error" ? "bg-rose-700" : "bg-neutral-900")}>
           <span className="mr-auto py-2">{item.text}</span>

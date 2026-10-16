@@ -1,4 +1,6 @@
-import { ArrowLeft, HandCoins, Loader2, MessageCircle, Plus, Trash2 } from "lucide-react"
+import { HandCoins, Loader2, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react"
+import { EntryDetailSheet } from "@/components/entry-detail"
+import { toast } from "@/components/toast"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
@@ -13,6 +15,7 @@ import {
   ApiError,
   createContact,
   deleteContact,
+  deleteEntry,
   getContact,
   linkContact,
   listAccounts,
@@ -135,7 +138,7 @@ export function ContactsPage() {
           <CardContent>
             <form onSubmit={form.onSubmit} noValidate className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
               <div className="sm:col-span-2"><Status err={form.err} ok={form.ok} /></div>
-              <Field name="name" label={t("ct.newContact")} placeholder="Bau" error={form.err.fields?.name} />
+              <Field name="name" label={t("ct.newContact")} placeholder="Bayu" error={form.err.fields?.name} />
               <Button type="submit" disabled={form.busy} className="h-10 rounded-sm">
                 {form.busy ? <Loader2 className="animate-spin" /> : <Plus />}
                 {t("ct.add")}
@@ -201,22 +204,24 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
   const [type, setType] = useState<LoanType>("talangan")
   const [overpay, setOverpay] = useState<{ body: LoanInput; form?: HTMLFormElement } | null>(null)
   const [err, setErr] = useState<FormError>({})
-  const [ok, setOk] = useState("")
   const [busy, setBusy] = useState(false)
 
   const money = accounts.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code))
+  // What is still open for a repayment in this direction.
+  const owed = type === "lunas_masuk" ? contact.receivable : type === "lunas_keluar" ? contact.payable : 0
   const expenses = accounts.filter((a) => a.is_active && a.type === "Expense")
 
   async function send(body: LoanInput, form?: HTMLFormElement) {
     setBusy(true)
     setErr({})
-    setOk("")
     try {
       const e = await postLoan(body)
       setOverpay(null)
       form?.reset()
-      setOk(t("ct.savedNo", { no: e.entry_no }))
       onPosted()
+      toast(t("ct.savedToast", { amount: fmtIDR(body.amount), name: contact.name }), {
+        action: { label: t("common.undo"), run: () => deleteEntry(e.id).then(() => (toast(t("qa.undone")), onPosted()), (x) => toast(toFormError(x).message ?? "", { tone: "error" })) },
+      })
     } catch (e) {
       // A repayment larger than the debt needs an explicit yes: the rest becomes a debt the other way.
       if (e instanceof ApiError && e.code === "overpayment") {
@@ -235,6 +240,7 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
     const myShare = v.my_share ? toSen(v.my_share) : 0
     if (!(amount > 0)) return setErr({ fields: { amount: t("field.positiveAmount") } })
     if (!(myShare >= 0)) return setErr({ fields: { my_share: t("field.invalid") } })
+    if (type === "talangan" && myShare > 0 && !v.expense_account_id) return setErr({ fields: { expense_account_id: t("field.choose") } })
     send(
       {
         type,
@@ -255,7 +261,7 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
         <Segmented
           label={t("ct.loanType")}
           value={type}
-          onChange={(v) => (setType(v), setOverpay(null), setErr({}), setOk(""))}
+          onChange={(v) => (setType(v), setOverpay(null), setErr({}))}
           items={loanTypes.map((v) => ({ value: v, label: t(`ct.types.${v}.label`) }))}
         />
         <p className="text-sm text-muted-foreground">{t(`ct.types.${type}.help`)}</p>
@@ -273,15 +279,27 @@ function LoanForm({ contact, accounts, onPosted }: { contact: Contact; accounts:
         )}
 
         <form onSubmit={onSubmit} noValidate className="grid gap-4 md:grid-cols-2">
-          <div className="md:col-span-2"><Status err={err} ok={ok} /></div>
-          <AmountField name="amount" label={t("ct.amountRp")} placeholder="100.000" error={err.fields?.amount} />
+          <div className="md:col-span-2"><Status err={err} ok="" /></div>
+          <div className="grid gap-1">
+            <AmountField name="amount" label={t("ct.amountRp")} placeholder="100.000" error={err.fields?.amount} />
+            {/* Settling up is usually the whole amount: one tap fills it in. */}
+            {owed > 0 && (
+              <button type="button" className="w-fit text-left text-sm text-primary hover:underline"
+                onClick={(e) => {
+                  const input = e.currentTarget.closest("form")?.elements.namedItem("amount") as HTMLInputElement | null
+                  if (input) (input.value = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(owed / 100), input.focus())
+                }}>
+                {t("ct.settleAll", { amount: fmtIDR(owed) })}
+              </button>
+            )}
+          </div>
           <DateField name="entry_date" label={t("common.date")} defaultValue={todayISO()} error={err.fields?.entry_date} />
           <SelectField name="account_id" label={loanAccount(type)} options={accountOptions(money)} error={err.fields?.account_id} />
           <Field name="description" label={t("common.note")} placeholder={t("common.optional")} error={err.fields?.description} />
           {type === "talangan" && (
             <>
               <AmountField name="my_share" label={t("ct.myShare")} placeholder="0" error={err.fields?.my_share} />
-              <SelectField name="expense_account_id" label={t("ct.myShareOn")} options={accountOptions(expenses)} error={err.fields?.expense_account_id} />
+              <SelectField name="expense_account_id" label={t("ct.myShareOn")} options={accountOptions(expenses)} error={err.fields?.expense_account_id} mustChoose />
             </>
           )}
           <div className="md:col-span-2">
@@ -304,6 +322,8 @@ export function ContactPage({ id }: { id: string }) {
   const [err, setErr] = useState<FormError>({})
   const [reload, setReload] = useState(0)
   const [armed, setArmed] = useState(false)
+  const [naming, setNaming] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   useEffect(() => {
     listAccounts().then(setAccounts).catch((e) => setErr(toFormError(e)))
@@ -320,6 +340,8 @@ export function ContactPage({ id }: { id: string }) {
       await renameContact(id, input.value)
       setReload((n) => n + 1)
       setErr({})
+      setNaming(false)
+      toast(t("ct.renamed", { name: input.value.trim() }))
     } catch (e) {
       setErr(toFormError(e))
     }
@@ -328,6 +350,7 @@ export function ContactPage({ id }: { id: string }) {
   async function remove() {
     try {
       await deleteContact(id)
+      toast(t("ct.deleted", { name: c?.name ?? "" }))
       route("/app/contacts")
     } catch (e) {
       setArmed(false)
@@ -338,11 +361,7 @@ export function ContactPage({ id }: { id: string }) {
   return (
     <AppShell
       title={c?.name ?? t("ct.contact")}
-      actions={
-        <a href="/app/contacts" className="flex items-center gap-1 text-sm text-primary hover:underline">
-          <ArrowLeft className="size-4" /> {t("ct.all")}
-        </a>
-      }
+      back={{ href: "/app/contacts", label: t("ct.all") }}
     >
       <div className="grid gap-6">
         <Status err={err} ok="" />
@@ -360,16 +379,24 @@ export function ContactPage({ id }: { id: string }) {
                   <p>{t("ct.youOwe", { amount: fmtIDR(c.payable) })}</p>
                 </div>
                 <div className="ml-auto flex flex-wrap items-end gap-2">
-                  <Input id="contact-name" aria-label={t("ct.contactName")} defaultValue={c.name} className="h-11 w-40 rounded-sm bg-white md:h-9" />
-                  <Button variant="outline" size="sm" className="h-9 rounded-sm" onClick={rename}>{t("ct.rename")}</Button>
-                  {armed ? (
+                  {naming ? (
+                    <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => (e.preventDefault(), rename())}>
+                      <Input id="contact-name" aria-label={t("ct.contactName")} defaultValue={c.name} autoFocus className="h-11 w-44 rounded-sm bg-white md:h-9" />
+                      <Button type="submit" size="sm" className="h-9 rounded-sm">{t("common.save")}</Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-9" onClick={() => setNaming(false)}>{t("common.cancel")}</Button>
+                    </form>
+                  ) : (
+                    <Button variant="outline" size="sm" className="h-9 rounded-sm" onClick={() => setNaming(true)}><Pencil /> {t("ct.editName")}</Button>
+                  )}
+                  {/* A contact with history stays: past entries keep their name. Only an unused one can go. */}
+                  {detail.history.length === 0 && !naming && (armed ? (
                     <>
                       <Button variant="destructive" size="sm" className="h-9" onClick={remove}>{t("common.delete")}</Button>
                       <Button variant="ghost" size="sm" className="h-9" onClick={() => setArmed(false)}>{t("common.cancel")}</Button>
                     </>
                   ) : (
-                    <Button variant="ghost" size="icon-sm" aria-label={t("ct.deleteContact")} onClick={() => setArmed(true)}><Trash2 /></Button>
-                  )}
+                    <Button variant="ghost" size="icon-sm" aria-label={t("ct.deleteContact")} title={t("ct.deleteContact")} onClick={() => setArmed(true)}><Trash2 /></Button>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -390,7 +417,7 @@ export function ContactPage({ id }: { id: string }) {
                 {detail.history.map((l, i) => {
                   const change = l.debit - l.credit
                   return (
-                    <MobileItem key={`${l.entry_id}-${i}`} title={l.description}
+                    <MobileItem key={`${l.entry_id}-${i}`} title={l.description} onClick={() => setOpenId(l.entry_id)}
                       meta={<><span>{fmtDate(l.entry_date)}</span><NetText net={l.running_net} /></>}
                       value={`${change > 0 ? "+" : "−"} ${fmtIDR(Math.abs(change))}`}
                       valueClass={change > 0 ? "text-emerald-700" : "text-rose-700"} />
@@ -412,7 +439,7 @@ export function ContactPage({ id }: { id: string }) {
                   {detail.history.map((l, i) => {
                     const change = l.debit - l.credit
                     return (
-                      <tr key={`${l.entry_id}-${i}`}>
+                      <tr key={`${l.entry_id}-${i}`} className="cursor-pointer hover:bg-muted/40" onClick={() => setOpenId(l.entry_id)}>
                         <td className="whitespace-nowrap">{fmtDate(l.entry_date)}</td>
                         <td className="text-muted-foreground">{l.entry_no}</td>
                         <td><Badge className={cn("rounded-sm", kindBadge[l.kind] ?? "bg-muted text-foreground")}>{t(`kind.${l.kind}` as Key)}</Badge></td>
@@ -429,10 +456,12 @@ export function ContactPage({ id }: { id: string }) {
                   )}
                 </tbody>
               </TableCard>
+              {detail.history.length > 0 && <p className="text-xs text-muted-foreground">{t("ct.keepsHistory")}</p>}
             </section>
           </>
         )}
       </div>
+      <EntryDetailSheet id={openId} onClose={() => (setOpenId(null), setReload((n) => n + 1))} />
     </AppShell>
   )
 }

@@ -38,9 +38,19 @@ function SheetContent({
   title: string
   description?: string
 }) {
+  // Preact does not bubble events from a portal up the component tree the way React does, so
+  // Radix takes a tap inside a nested popover or sheet (both portaled to <body>) for a tap
+  // outside this sheet and closes it. That tap belongs to the layer on top: ignore it here.
+  const overlay = React.useRef<HTMLDivElement>(null)
+  const { onInteractOutside, ...rest } = props
+  const keepOpen = (e: Event) => {
+    const el = e.target
+    if (!(el instanceof Element)) return
+    if (el.closest("[data-radix-popper-content-wrapper], [role=dialog]") || (el.matches("[data-slot=sheet-overlay]") && el !== overlay.current)) e.preventDefault()
+  }
   return (
     <SheetPrimitive.Portal>
-      <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+      <SheetPrimitive.Overlay ref={overlay} data-slot="sheet-overlay" className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
@@ -48,7 +58,8 @@ function SheetContent({
           sides[side],
           className,
         )}
-        {...props}
+        {...rest}
+        onInteractOutside={(e) => (keepOpen(e), onInteractOutside?.(e))}
       >
         {side === "bottom" && <div aria-hidden="true" className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted" />}
         <div className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-2">

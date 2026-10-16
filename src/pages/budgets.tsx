@@ -12,7 +12,7 @@ import { Card as UICard, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ApiError, createAccount, getBudgets, listAccounts, putBudget, type Account, type BudgetList, type BudgetRow } from "@/lib/api"
 import { t, useT } from "@/lib/i18n"
-import { fmtIDR, toSen } from "@/lib/utils"
+import { cn, fmtIDR, toSen } from "@/lib/utils"
 import { Goals } from "@/pages/goals"
 
 const NEW = "__new__" // the "new category" choice in the picker
@@ -26,7 +26,8 @@ function useBudgetForm(row: BudgetRow, date: string, onSaved: (r: BudgetRow) => 
     const amount = toSen(v.amount)
     if (!(amount > 0)) throw new ApiError(400, "validation failed", undefined, "validation", { amount: "positiveAmount" })
     onSaved(await putBudget(row.account_id, { date, amount }))
-    return t("common.saved")
+    toast(t("budget.savedToast", { name: row.name, amount: fmtIDR(amount) }))
+    return ""
   })
 }
 
@@ -55,6 +56,27 @@ function Editor({ row, form, onRemove }: { row: BudgetRow; form: ReturnType<type
 
 type RowProps = { row: BudgetRow; date: string; onSaved: (r: BudgetRow) => void; onRemove: () => void }
 
+// Used is spending against the limit: amount, what is left, and a bar, so the Budgets page
+// answers "how am I doing" without going back to the dashboard.
+function Used({ row }: { row: BudgetRow }) {
+  const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0
+  const over = row.actual > row.budget
+  return (
+    <div className="grid min-w-40 gap-1 text-sm tabular-nums">
+      <span>
+        {fmtIDR(row.actual)}{" "}
+        <span className={cn("text-xs", over ? "text-rose-700" : "text-muted-foreground")}>
+          {over ? t("dash.overBy", { amount: fmtIDR(row.actual - row.budget) }) : t("dash.left", { amount: fmtIDR(row.budget - row.actual) })}
+        </span>
+      </span>
+      <span role="meter" aria-label={t("dash.budgetUsed", { name: row.name })} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}
+        className="block h-1.5 overflow-hidden rounded-sm bg-[#e6ebf5]">
+        <span className={cn("block h-full", over ? "bg-rose-600" : pct >= 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+      </span>
+    </div>
+  )
+}
+
 function Row({ row, date, onSaved, onRemove }: RowProps) {
   const form = useBudgetForm(row, date, onSaved)
   const message = form.ok || form.err.message || form.err.fields?.amount || ""
@@ -64,7 +86,7 @@ function Row({ row, date, onSaved, onRemove }: RowProps) {
         {row.name}
         {row.inherited && <Badge className="ml-2 rounded-sm bg-[#eaf2ff] text-primary">{t("budget.inherited")} <Info k="inherited" /></Badge>}
       </td>
-      <td className="text-right whitespace-nowrap tabular-nums">{fmtIDR(row.actual)}</td>
+      <td className="text-right whitespace-nowrap tabular-nums"><Used row={row} /></td>
       <td>
         <Editor row={row} form={form} onRemove={onRemove} />
         {message && <p role="status" className="mt-1 text-right text-xs text-muted-foreground">{message}</p>}
@@ -81,8 +103,8 @@ function Card({ row, date, onSaved, onRemove }: RowProps) {
       <div className="flex items-center gap-2">
         <span className="font-medium">{row.name}</span>
         {row.inherited && <Badge className="rounded-sm bg-[#eaf2ff] text-primary">{t("budget.inherited")} <Info k="inherited" /></Badge>}
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">{t("budget.spentAmount", { amount: fmtIDR(row.actual) })}</span>
       </div>
+      <Used row={row} />
       <Editor row={row} form={form} onRemove={onRemove} />
       {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
     </li>

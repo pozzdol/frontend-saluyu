@@ -32,7 +32,7 @@ export function PrivacyPage() {
   }
 
   return (
-    <AppShell title={t("priv.title")}>
+    <AppShell title={t("priv.title")} back={{ href: "/account", label: t("nav.profile") }}>
       <div className="grid max-w-3xl gap-6">
         <section className="grid gap-3">
           <h2 className="text-lg font-semibold">{t("priv.whoSees")}</h2>

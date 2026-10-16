@@ -13,8 +13,28 @@ export type Key = Leaves<Dict>
 
 const dicts: Record<Locale, Dict> = { id, en }
 
-// Indonesian browsers get Indonesian; everyone else English.
-export const browserLocale = (): Locale => (navigator.language?.toLowerCase().startsWith("id") ? "id" : "en")
+// A visitor's own choice (landing footer) wins; otherwise Indonesian browsers get Indonesian
+// and everyone else English. A signed-in user's saved language overrides both (LocaleSync).
+const guestKey = "saluyu.locale"
+const guestChoice = (): Locale | null => {
+  try {
+    const v = localStorage.getItem(guestKey)
+    return v === "id" || v === "en" ? v : null
+  } catch {
+    return null
+  }
+}
+export const browserLocale = (): Locale => guestChoice() ?? (navigator.language?.toLowerCase().startsWith("id") ? "id" : "en")
+
+// chooseLocale is the visitor picking a language: applied now and remembered on this device.
+export function chooseLocale(l: Locale) {
+  try {
+    localStorage.setItem(guestKey, l)
+  } catch {
+    /* private mode: this visit only */
+  }
+  setLocale(l)
+}
 
 let current: Locale = browserLocale()
 const listeners = new Set<() => void>()
