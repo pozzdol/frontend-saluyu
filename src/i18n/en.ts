@@ -171,6 +171,8 @@ export const en: Dict = {
     contact_not_allowed: "Only receivables and payables use a contact.",
     needs_expense: "Choose a category for your share.",
     wrong_mirror: "Choose a cash, bank, income or spending account for your side.",
+    not_fixed_asset: "Only a fixed asset can be revalued.",
+    no_value_change: "The asset already has this value.",
     kind_change: "The type of a transaction cannot change. Delete it and record a new one.",
     wrong_edit_form: "This transaction is edited with another form.",
     mirror_locked: "The other member recorded this loan. Ask them to change the amount.",
@@ -1152,4 +1154,17 @@ export const en: Dict = {
     },
     ctaTitle: "Start knowing where your money goes.",
     ctaSub: "Set up in minutes, record in seconds.",
-  },}
+  },
+  // Fase 15
+  fa: {
+    group: "Fixed assets",
+    update: "Update value",
+    title: "Update the value of {name}",
+    hint: "Recorded value now {value}. The difference is booked to Asset Value Adjustment.",
+    newValue: "New value",
+    updated: "Value of {name} updated.",
+    loanForAsset: "This loan is for buying an asset",
+    noAsset: "Not for buying an asset",
+    assetHint: "The loan money goes straight to this asset, not to a bank account.",
+  },
+}

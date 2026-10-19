@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   ApiError,
+  isFixedAsset,
   isMoney,
   perContact,
   listAccounts,
@@ -41,7 +42,7 @@ type FormKind = PostEntryInput["kind"]
 type Fits = (a: Account) => boolean
 export const kinds: Record<FormKind, { label: Key; icon: typeof ArrowUpRight; from: Fits; to: Fits; fromLabel: Key; toLabel: Key }> = {
   expense: { label: "kind.expense", icon: ArrowUpRight, from: isMoney, to: (a) => a.type === "Expense", fromLabel: "tx.paidFrom", toLabel: "tx.category" },
-  income: { label: "kind.income", icon: ArrowDownLeft, from: (a) => a.type === "Revenue", to: (a) => a.type === "Asset", fromLabel: "tx.source", toLabel: "tx.receivedInto" },
+  income: { label: "kind.income", icon: ArrowDownLeft, from: (a) => a.type === "Revenue", to: (a) => a.type === "Asset" && !isFixedAsset(a), fromLabel: "tx.source", toLabel: "tx.receivedInto" },
   transfer: { label: "kind.transfer", icon: ArrowLeftRight, from: isMoney, to: (a) => a.type === "Asset" || a.type === "Liability", fromLabel: "tx.from", toLabel: "tx.to" },
 }
 

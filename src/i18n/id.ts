@@ -171,6 +171,8 @@ export const id = {
     contact_not_allowed: "Hanya piutang dan utang yang memakai kontak.",
     needs_expense: "Pilih kategori untuk bagianmu.",
     wrong_mirror: "Pilih akun kas, bank, pemasukan, atau pengeluaran untuk sisimu.",
+    not_fixed_asset: "Hanya aset tetap yang bisa diperbarui nilainya.",
+    no_value_change: "Nilainya sudah sama.",
     kind_change: "Jenis transaksi tidak bisa diubah. Hapus lalu catat yang baru.",
     wrong_edit_form: "Transaksi ini diubah lewat form lain.",
     mirror_locked: "Pinjaman ini dicatat anggota lain. Minta dia yang mengubah jumlahnya.",
@@ -1151,6 +1153,18 @@ export const id = {
     },
     ctaTitle: "Mulai tahu ke mana uangmu pergi.",
     ctaSub: "Siapkan dalam beberapa menit, catat dalam beberapa detik.",
+  },
+  // Fase 15
+  fa: {
+    group: "Aset Tetap",
+    update: "Perbarui nilai",
+    title: "Perbarui nilai {name}",
+    hint: "Nilai tercatat sekarang {value}. Selisihnya dicatat ke Penyesuaian Nilai Aset.",
+    newValue: "Nilai baru",
+    updated: "Nilai {name} diperbarui.",
+    loanForAsset: "Pinjaman ini untuk membeli aset",
+    noAsset: "Bukan untuk membeli aset",
+    assetHint: "Uang pinjaman langsung menambah aset ini, bukan rekening bank.",
   },
 }
 

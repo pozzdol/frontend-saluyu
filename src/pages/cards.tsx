@@ -20,6 +20,7 @@ import {
   deletePlan,
   getCard,
   getPlan,
+  isFixedAsset,
   listAccounts,
   listCards,
   listPlans,
@@ -145,7 +146,10 @@ function NewPlan({ accounts, onDone, onCancel }: { accounts: Account[]; onDone: 
   const [nums, setNums] = useState({ principal: "", rate: "", tenor: "" })
   const preview = monthlyPayment(toSen(nums.principal), Number(nums.rate.replace(",", ".")), Number(nums.tenor), method)
   const [into, setInto] = useState("")
-  const intoOptions = [{ value: "", label: t("cc.alreadyRunning") }, ...accountOptions(accounts.filter((a) => a.is_active && (a.type === "Asset" || a.type === "Expense") && !perContact(a.code)))]
+  const intoOptions = [{ value: "", label: t("cc.alreadyRunning") }, ...accountOptions(accounts.filter((a) => a.is_active && (a.type === "Asset" || a.type === "Expense") && !perContact(a.code) && !isFixedAsset(a)))]
+  const [asset, setAsset] = useState("")
+  const assets = accounts.filter((a) => a.is_active && isFixedAsset(a))
+  const funded = asset || into // an asset or a bank: either way the loan money is recorded
   const form = useForm(async (v, el) => {
     const principal = toSen(v.principal)
     const rate = Number(v.annual_rate.replace(",", "."))
@@ -156,7 +160,7 @@ function NewPlan({ accounts, onDone, onCancel }: { accounts: Account[]; onDone: 
     if (!(Number.isInteger(tenor) && tenor >= 1 && tenor <= 360)) fields.tenor_months = "max:360"
     if (Object.keys(fields).length) throw new ApiError(400, "validation failed", undefined, "validation", fields)
     const p = await createPlan({ name: v.name, principal, annual_rate: rate, tenor_months: tenor, method, first_due_date: v.first_due_date,
-      ...(into && { received_into_id: into, entry_date: v.entry_date }) })
+      ...(asset ? { asset_account_id: asset, entry_date: v.entry_date } : into && { received_into_id: into, entry_date: v.entry_date }) })
     el.reset()
     onDone()
     toast(t("cc.planAdded", { name: p.account.name, amount: fmtIDR(p.next?.payment ?? 0) }))
@@ -186,9 +190,13 @@ function NewPlan({ accounts, onDone, onCancel }: { accounts: Account[]; onDone: 
         </p>
       )}
       <DateField name="first_due_date" label={t("cc.firstDue")} defaultValue={nextMonth()} error={form.err.fields?.first_due_date} />
-      <SelectField name="received_into_id" label={t("cc.receivedInto")} value={into} onChange={setInto} options={intoOptions} />
-      {into && <DateField name="entry_date" label={t("cc.receivedOn")} defaultValue={todayISO()} error={form.err.fields?.entry_date} />}
-      <p className="text-xs text-muted-foreground md:col-span-2">{t(into ? "cc.receivedHint" : "cc.runningHint")}</p>
+      {assets.length > 0 && (
+        <SelectField name="asset_account_id" label={t("fa.loanForAsset")} value={asset} onChange={setAsset}
+          options={[{ value: "", label: t("fa.noAsset") }, ...accountOptions(assets)]} />
+      )}
+      {!asset && <SelectField name="received_into_id" label={t("cc.receivedInto")} value={into} onChange={setInto} options={intoOptions} />}
+      {funded && <DateField name="entry_date" label={t("cc.receivedOn")} defaultValue={todayISO()} error={form.err.fields?.entry_date} />}
+      <p className="text-xs text-muted-foreground md:col-span-2">{t(asset ? "fa.assetHint" : into ? "cc.receivedHint" : "cc.runningHint")}</p>
       <div className="flex gap-2 md:col-span-2">
         <Button type="submit" disabled={form.busy} className="h-10 rounded-sm">
           {form.busy && <Loader2 className="animate-spin" />} {t("cc.savePlan")}
