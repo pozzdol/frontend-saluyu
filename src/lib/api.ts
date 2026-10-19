@@ -207,7 +207,9 @@ export type Account = {
 // isCard: a credit card or paylater pays for things like a bank account, and runs up a bill.
 export const isCard = (a: Account) => a.kind === "credit_card" || a.kind === "paylater"
 // isMoney: what pays for an expense or starts a transfer.
-export const isMoney = (a: Account) => (a.type === "Asset" || isCard(a)) && !perContact(a.code)
+export const isMoney = (a: Account) => (a.type === "Asset" || isCard(a)) && !perContact(a.code) && !isFixedAsset(a)
+// isFixedAsset: vehicles, property, gadgets. Owned, but never spendable money.
+export const isFixedAsset = (a: Account) => a.type === "Asset" && a.category === "Aset Tetap"
 
 export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment" | "borrowing" | "installment"
 
@@ -362,6 +364,9 @@ export const useEntriesVersion = () =>
 
 export const getLedger = (id: string, params: { from?: string; to?: string }) =>
   authed<{ data: Ledger }>(`/accounts/${id}/ledger${query(params)}`).then((r) => r.data)
+
+export const revalueAsset = (id: string, body: { value: number; entry_date: string }) =>
+  authed<{ data: Entry }>(`/accounts/${id}/revalue`, json("POST", body)).then((r) => (entriesChanged(), r.data))
 
 export const getTrialBalance = (asOf: string) =>
   authed<{ data: TrialBalance }>(`/reports/trial-balance${query({ as_of: asOf })}`).then((r) => r.data)
@@ -650,6 +655,7 @@ export type PlanInput = {
   method: "flat" | "annuity"
   first_due_date: string
   received_into_id?: string
+  asset_account_id?: string // a fixed asset the loan paid for: it gets the money instead of received_into_id
   entry_date?: string
 }
 

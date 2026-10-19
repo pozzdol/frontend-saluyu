@@ -9,7 +9,7 @@ import { toast } from "@/components/toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { deleteEntry, isMoney, listAccounts, listCategoryRules, perContact, postEntry, ruleFor, type Account, type CategoryRule, type PostEntryInput } from "@/lib/api"
+import { deleteEntry, isFixedAsset, isMoney, listAccounts, listCategoryRules, perContact, postEntry, ruleFor, type Account, type CategoryRule, type PostEntryInput } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
@@ -21,8 +21,8 @@ type Kind = PostEntryInput["kind"]
 // money went to or came from. A transfer can pay off a card or loan.
 const shape: Record<Kind, { tile: (a: Account) => boolean; wallet: (a: Account) => boolean; walletIsFrom: boolean }> = {
   expense: { tile: (a) => a.type === "Expense", wallet: isMoney, walletIsFrom: true },
-  income: { tile: (a) => a.type === "Revenue", wallet: (a) => a.type === "Asset", walletIsFrom: false },
-  transfer: { tile: (a) => a.type === "Asset" || a.type === "Liability", wallet: isMoney, walletIsFrom: true },
+  income: { tile: (a) => a.type === "Revenue", wallet: (a) => a.type === "Asset" && !isFixedAsset(a), walletIsFrom: false },
+  transfer: { tile: (a) => (a.type === "Asset" && !isFixedAsset(a)) || a.type === "Liability", wallet: isMoney, walletIsFrom: true },
 }
 
 const pad: PadKey[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "000", "0", "back"]
@@ -60,7 +60,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
     listCategoryRules().then(setRules, () => {})
     const use = (list: Account[]) => {
       setAccounts(list)
-      const wallets = list.filter((a) => a.is_active && a.type === "Asset" && !perContact(a.code)) // default: never a card
+      const wallets = list.filter((a) => a.is_active && isMoney(a) && a.type === "Asset") // default: never a card
       const card = here && list.find((a) => a.id === here && a.is_active)
       setWallet(card ? card.id : wallets.find((a) => a.id === lastWallet())?.id ?? wallets[0]?.id ?? "")
     }

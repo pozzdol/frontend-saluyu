@@ -1,4 +1,4 @@
-import { Loader2, Pencil, Plus } from "lucide-react"
+import { Loader2, Pencil, Plus, RefreshCw } from "lucide-react"
 import { toast } from "@/components/toast"
 import { Input } from "@/components/ui/input"
 import { useEffect, useState } from "preact/hooks"
@@ -7,8 +7,11 @@ import { Switch } from "@/components/ui/switch"
 import { Field, SelectField, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { createAccount, listAccounts, updateAccount, type Account, type AccountType } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { ApiError, createAccount, getTrialBalance, isFixedAsset, listAccounts, revalueAsset, updateAccount, type Account, type AccountType } from "@/lib/api"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useIsMobile } from "@/components/picker"
+import { AmountField, DateField } from "@/components/field"
+import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { Info, Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import { IconButton } from "@/components/account-icon"
@@ -71,6 +74,36 @@ function NewAccount({ accounts, onCreated, onCancel }: { accounts: Account[]; on
   )
 }
 
+// RevalueSheet sets a fixed asset's current value; the server books the difference to equity.
+function RevalueSheet({ account, value, onClose, onDone }: { account: Account; value: number; onClose: () => void; onDone: () => void }) {
+  const t = useT()
+  const mobile = useIsMobile()
+  const form = useForm(async (v) => {
+    const sen = toSen(v.value)
+    if (!v.value.trim() || !(sen >= 0)) throw new ApiError(400, "validation failed", undefined, "validation", { value: "positiveAmount" })
+    await revalueAsset(account.id, { value: sen, entry_date: v.entry_date })
+    onDone()
+    toast(t("fa.updated", { name: account.name }))
+    return ""
+  })
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side={mobile ? "bottom" : "right"} title={t("fa.title", { name: account.name })}>
+        <form onSubmit={form.onSubmit} noValidate className="grid gap-4 pb-2">
+          <Status err={form.err} ok="" />
+          <p className="text-sm text-muted-foreground">{t("fa.hint", { value: fmtIDR(value) })}</p>
+          <AmountField name="value" label={t("fa.newValue")} placeholder="18.000.000" error={form.err.fields?.value} />
+          <DateField name="entry_date" label={t("common.date")} defaultValue={todayISO()} />
+          <Button type="submit" disabled={form.busy} className="h-11 rounded-sm">
+            {form.busy && <Loader2 className="animate-spin" />}
+            {t("common.save")}
+          </Button>
+        </form>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 export function Accounts() {
   const t = useT()
   const [accounts, setAccounts] = useState<Account[] | null>(null)
@@ -78,9 +111,12 @@ export function Accounts() {
   const [reload, setReload] = useState(0)
   const [adding, setAdding] = useState(false)
   const [naming, setNaming] = useState<string | null>(null)
+  const [values, setValues] = useState<Record<string, number>>({}) // fixed asset id -> value today
+  const [revaluing, setRevaluing] = useState<Account | null>(null)
 
   useEffect(() => {
     listAccounts().then(setAccounts).catch((e) => setErr(toFormError(e)))
+    getTrialBalance(todayISO()).then((tb) => setValues(Object.fromEntries(tb.rows.map((r) => [r.account_id, r.debit_balance - r.credit_balance])))).catch(() => {})
   }, [reload])
 
   const saved = (updated: Account) => setAccounts((list) => list?.map((x) => (x.id === updated.id ? { ...updated, uses_30d: x.uses_30d } : x)) ?? null)
@@ -118,6 +154,20 @@ export function Accounts() {
     </span>
   )
 
+  // Fixed assets show their value and the way to update it.
+  const valueCell = (a: Account) => isFixedAsset(a) && (
+    <span className="flex items-center gap-2">
+      <span className="tabular-nums">{fmtIDR(values[a.id] ?? 0)}</span>
+      <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setRevaluing(a)}><RefreshCw /> {t("fa.update")}</Button>
+    </span>
+  )
+
+  // Fixed assets get their own group under Asset: they are owned, not spendable.
+  const groups = typeOrder.flatMap((type) => type === "Asset"
+    ? [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type && !isFixedAsset(a)) ?? [] },
+       { type, fixed: true, rows: accounts?.filter(isFixedAsset) ?? [] }]
+    : [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type) ?? [] }])
+
   return (
     <AppShell title={t("acct.title")} term="code"
       actions={!adding && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding(true)}><Plus /> {t("acct.add")}</Button>}>
@@ -125,14 +175,14 @@ export function Accounts() {
         {adding && <NewAccount accounts={accounts ?? []} onCreated={() => (setReload((n) => n + 1), setAdding(false))} onCancel={() => setAdding(false)} />}
         <Status err={err} ok="" />
 
-        {typeOrder.map((type) => {
-          const rows = accounts?.filter((a) => a.type === type) ?? []
+        {groups.map(({ type, fixed, rows }) => {
           if (rows.length === 0) return null
+          const gid = fixed ? "fixed" : type
           return (
-            <section key={type} aria-labelledby={`type-${type}`} className="grid gap-2">
-              <h2 id={`type-${type}`} className="flex items-center gap-2 font-semibold">
+            <section key={gid} aria-labelledby={`type-${gid}`} className="grid gap-2">
+              <h2 id={`type-${gid}`} className="flex items-center gap-2 font-semibold">
                 <span className={cn("size-2.5 rounded-full", typeDot[type])} />
-                <Term k={({ Asset: "asset", Liability: "liability", Equity: "equity", Revenue: "revenue", Expense: "expense" } as const)[type]}>{t(`type.${type}`)}</Term>
+                {fixed ? t("fa.group") : <Term k={({ Asset: "asset", Liability: "liability", Equity: "equity", Revenue: "revenue", Expense: "expense" } as const)[type]}>{t(`type.${type}`)}</Term>}
                 <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
                   {t("acct.growsOn", { side: rows[0].normal_balance === "Debit" ? "debit" : t("glossary.credit.label").toLowerCase() })}
                   <Info k="normalBalance" />
@@ -144,7 +194,7 @@ export function Accounts() {
                     key={a.id}
                     lead={<IconButton account={a} onSaved={saved} />}
                     title={nameCell(a)}
-                    meta={<><span className="tabular-nums">{a.code}</span><span>{a.category}</span>{!a.is_active && <span>{t("common.inactive")}</span>}</>}
+                    meta={<><span className="tabular-nums">{a.code}</span><span>{a.category}</span>{valueCell(a)}{!a.is_active && <span>{t("common.inactive")}</span>}</>}
                     value={<Switch checked={a.is_active} onCheckedChange={() => toggle(a)} aria-label={t("acct.activeToggle", { name: a.name })} />}
                   />
                 ))}
@@ -168,7 +218,7 @@ export function Accounts() {
                           {nameCell(a)}
                         </span>
                       </td>
-                      <td>{a.category}</td>
+                      <td>{a.category}{fixed && <span className="ml-3">{valueCell(a)}</span>}</td>
                       <td>
                         <label className="flex items-center gap-2 text-sm">
                           <Switch checked={a.is_active} onCheckedChange={() => toggle(a)} aria-label={t("acct.activeToggle", { name: a.name })} />
@@ -183,6 +233,7 @@ export function Accounts() {
           )
         })}
       </div>
+      {revaluing && <RevalueSheet account={revaluing} value={values[revaluing.id] ?? 0} onClose={() => setRevaluing(null)} onDone={() => (setRevaluing(null), setReload((n) => n + 1))} />}
     </AppShell>
   )
 }
