@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card as UICard, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { ApiError, createAccount, getBudgets, listAccounts, putBudget, type Account, type BudgetList, type BudgetRow } from "@/lib/api"
+import { Segmented } from "@/components/segmented"
+import { ApiError, createAccount, getBudgets, listAccounts, putBudget, updateAccount, type Account, type BudgetList, type BudgetRow, type NeedGroup } from "@/lib/api"
 import { t, useT } from "@/lib/i18n"
 import { cn, fmtIDR, toSen } from "@/lib/utils"
 import { Goals } from "@/pages/goals"
@@ -54,21 +55,79 @@ function Editor({ row, form, onRemove }: { row: BudgetRow; form: ReturnType<type
   )
 }
 
-type RowProps = { row: BudgetRow; date: string; onSaved: (r: BudgetRow) => void; onRemove: () => void }
+type RowProps = { row: BudgetRow; date: string; onSaved: (r: BudgetRow) => void; onRemove: () => void; onChanged: () => void }
+
+const groups: NeedGroup[] = ["needs", "wants", "savings"]
+
+// Extras: the envelope switch and the 50/30/20 group of one category.
+function Extras({ row, onChanged }: { row: BudgetRow; onChanged: () => void }) {
+  const t = useT()
+  const change = (body: Parameters<typeof updateAccount>[1]) =>
+    updateAccount(row.account_id, body).then(onChanged, (e) => toast(toFormError(e).message ?? "", { tone: "error" }))
+  return (
+    <div className="grid gap-2 text-sm">
+      <label className="flex items-center gap-2 text-muted-foreground">
+        <input type="checkbox" checked={row.budget_carry} aria-label={t("fase14.carryAria", { name: row.name })}
+          onChange={(e) => change({ budget_carry: (e.target as HTMLInputElement).checked })} />
+        {t("fase14.carryLabel")}
+      </label>
+      <Segmented
+        label={t("fase14.groupAria", { name: row.name })}
+        value={row.need_group ?? "none"}
+        onChange={(g) => change({ need_group: g })}
+        items={[...groups, "none" as const].map((g) => ({ value: g, label: t(g === "none" ? "fase14.noGroup" : `fase14.${g}`) }))}
+      />
+    </div>
+  )
+}
+
+// Split compares the period's real shares of income with 50/30/20.
+function Split({ list }: { list: BudgetList }) {
+  const t = useT()
+  return (
+    <section className="grid gap-2 rounded-sm border p-4" aria-labelledby="split-title">
+      <h2 id="split-title" className="text-sm font-semibold">{t("fase14.splitTitle")}</h2>
+      <p className="text-xs text-muted-foreground">{list.income > 0 ? t("fase14.splitIntro") : t("fase14.splitNoIncome")}</p>
+      {list.income > 0 && (
+        <ul className="grid gap-3 text-sm">
+          {list.groups.map((g) => (
+            <li key={g.group} className="grid gap-1">
+              <span className="flex flex-wrap justify-between gap-x-3">
+                <span className="font-medium">{t(`fase14.${g.group}`)}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {t("fase14.splitShare", { amount: fmtIDR(g.amount), pct: Math.round(g.share * 100), target: Math.round(g.target * 100) })}
+                </span>
+              </span>
+              <span className="relative block h-2 overflow-hidden rounded-sm bg-[#e6ebf5]">
+                <span className="block h-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, g.share * 100))}%` }} />
+                <span className="absolute inset-y-0 w-0.5 bg-foreground" style={{ left: `${g.target * 100}%` }} aria-hidden="true" />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
 // Used is spending against the limit: amount, what is left, and a bar, so the Budgets page
 // answers "how am I doing" without going back to the dashboard.
 function Used({ row }: { row: BudgetRow }) {
-  const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0
-  const over = row.actual > row.budget
+  const pct = row.available > 0 ? Math.min(100, (row.actual / row.available) * 100) : row.actual > 0 ? 100 : 0
+  const over = row.over
   return (
     <div className="grid min-w-40 gap-1 text-sm tabular-nums">
       <span>
         {fmtIDR(row.actual)}{" "}
         <span className={cn("text-xs", over ? "text-rose-700" : "text-muted-foreground")}>
-          {over ? t("dash.overBy", { amount: fmtIDR(row.actual - row.budget) }) : t("dash.left", { amount: fmtIDR(row.budget - row.actual) })}
+          {over ? t("dash.overBy", { amount: fmtIDR(-row.remaining) }) : t("dash.left", { amount: fmtIDR(row.remaining) })}
         </span>
       </span>
+      {row.budget_carry && row.carry !== 0 && (
+        <span className="text-xs text-muted-foreground">
+          {t(row.carry > 0 ? "fase14.carryHint" : "fase14.carryDebt", { amount: fmtIDR(Math.abs(row.carry)) })}
+        </span>
+      )}
       <span role="meter" aria-label={t("dash.budgetUsed", { name: row.name })} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}
         className="block h-1.5 overflow-hidden rounded-sm bg-[#e6ebf5]">
         <span className={cn("block h-full", over ? "bg-rose-600" : pct >= 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${pct}%` }} />
@@ -77,7 +136,7 @@ function Used({ row }: { row: BudgetRow }) {
   )
 }
 
-function Row({ row, date, onSaved, onRemove }: RowProps) {
+function Row({ row, date, onSaved, onRemove, onChanged }: RowProps) {
   const form = useBudgetForm(row, date, onSaved)
   const message = form.ok || form.err.message || form.err.fields?.amount || ""
   return (
@@ -85,6 +144,7 @@ function Row({ row, date, onSaved, onRemove }: RowProps) {
       <td>
         {row.name}
         {row.inherited && <Badge className="ml-2 rounded-sm bg-[#eaf2ff] text-primary">{t("budget.inherited")} <Info k="inherited" /></Badge>}
+        <div className="mt-2"><Extras row={row} onChanged={onChanged} /></div>
       </td>
       <td className="text-right whitespace-nowrap tabular-nums"><Used row={row} /></td>
       <td>
@@ -95,7 +155,7 @@ function Row({ row, date, onSaved, onRemove }: RowProps) {
   )
 }
 
-function Card({ row, date, onSaved, onRemove }: RowProps) {
+function Card({ row, date, onSaved, onRemove, onChanged }: RowProps) {
   const form = useBudgetForm(row, date, onSaved)
   const message = form.ok || form.err.message || form.err.fields?.amount || ""
   return (
@@ -107,6 +167,7 @@ function Card({ row, date, onSaved, onRemove }: RowProps) {
       <Used row={row} />
       <Editor row={row} form={form} onRemove={onRemove} />
       {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
+      <Extras row={row} onChanged={onChanged} />
     </li>
   )
 }
@@ -236,7 +297,7 @@ export function BudgetsPage() {
 
         {list && (
           <MobileList empty={rows.length === 0 ? t("budget.none") : undefined}>
-            {rows.map((r) => <Card key={r.account_id} row={r} date={list.period.start} onSaved={saved} onRemove={() => remove(r)} />)}
+            {rows.map((r) => <Card key={r.account_id} row={r} date={list.period.start} onSaved={saved} onRemove={() => remove(r)} onChanged={() => setReload((n) => n + 1)} />)}
           </MobileList>
         )}
         {list && (
@@ -249,13 +310,15 @@ export function BudgetsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => <Row key={r.account_id} row={r} date={list.period.start} onSaved={saved} onRemove={() => remove(r)} />)}
+              {rows.map((r) => <Row key={r.account_id} row={r} date={list.period.start} onSaved={saved} onRemove={() => remove(r)} onChanged={() => setReload((n) => n + 1)} />)}
               {rows.length === 0 && (
                 <tr><td colSpan={3} className="py-8! text-center text-muted-foreground">{t("budget.none")}</td></tr>
               )}
             </tbody>
           </TableCard>
         )}
+
+        {list && <Split list={list} />}
 
         {unplanned.length > 0 && (
           <section className="grid gap-2 rounded-sm border border-dashed p-4">

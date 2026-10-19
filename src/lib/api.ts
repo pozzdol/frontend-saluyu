@@ -202,7 +202,11 @@ export type Account = {
   color: string
   uses_30d: number // entries in the last 30 days; Quick Add sorts categories by it
   kind: "general" | "credit_card" | "paylater" | "loan"
+  budget_carry: boolean // envelope: unspent budget rolls into the next period
+  need_group: NeedGroup | null // 50/30/20 group
 }
+
+export type NeedGroup = "needs" | "wants" | "savings"
 
 // isCard: a credit card or paylater pays for things like a bank account, and runs up a bill.
 export const isCard = (a: Account) => a.kind === "credit_card" || a.kind === "paylater"
@@ -230,6 +234,7 @@ export type Entry = {
   period_date: string | null // set when counted toward another period than entry_date
   created_at: string
   lines: Line[]
+  balance_after?: number // balance of the filtered account after this entry; only when filtered to one account
 }
 
 export type LedgerRow = {
@@ -278,7 +283,7 @@ export const listAccounts = () => authed<{ data: Account[] }>("/accounts").then(
 export const createAccount = (body: { code: string; name: string; type: AccountType; category: string; icon?: string; color?: string }) =>
   authed<{ data: Account }>("/accounts", json("POST", body)).then((r) => r.data)
 
-export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean; icon?: string; color?: string }) =>
+export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean; icon?: string; color?: string; budget_carry?: boolean; need_group?: NeedGroup | "none" }) =>
   authed<{ data: Account }>(`/accounts/${id}`, json("PATCH", body)).then((r) => r.data)
 
 export type PostEntryInput = {
@@ -396,7 +401,20 @@ export const reconcile = (body: ReconcileInput) =>
 
 export type Period = { start: string; end: string; next: string; prev: string; label: string }
 export type AmountRow = { account_id: string; code: string; name: string; amount: number; prev?: number; avg3?: number }
-export type BudgetRow = { account_id: string; name: string; budget: number; actual: number; remaining: number; over: boolean; inherited: boolean }
+// With the envelope on, available = budget + carry (what is left over from earlier periods, may be negative).
+export type BudgetRow = {
+  account_id: string
+  name: string
+  budget: number
+  actual: number
+  remaining: number
+  over: boolean
+  inherited: boolean
+  budget_carry: boolean
+  carry: number
+  available: number
+  need_group: NeedGroup | null
+}
 export type BalanceRow = { account_id: string; code: string; name: string; category: string; balance: number }
 
 export type Dashboard = {
@@ -411,7 +429,8 @@ export type Dashboard = {
   balances: BalanceRow[]
 }
 
-export type BudgetList = { period: Period; rows: BudgetRow[] }
+export type GroupShare = { group: NeedGroup; amount: number; share: number; target: number } // share and target are 0..1
+export type BudgetList = { period: Period; rows: BudgetRow[]; income: number; groups: GroupShare[] }
 
 export type IncomeStatement = {
   period: Period
@@ -802,15 +821,22 @@ export const getCashFlow = (date: string) => authed<{ data: CashFlow }>(`/report
 export const getTaxSummary = (year: number) => authed<{ data: TaxSummary }>(`/reports/tax-summary${query({ year: String(year) })}`).then((r) => r.data)
 
 // downloadReport saves one report as an Excel file (the bearer token rules out a plain link).
-export async function downloadReport(report: "income" | "balance" | "cashflow" | "journal", date: string) {
-  const go = () => fetch(`/api/v1/reports/export.xlsx${query({ report, date })}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
+export const downloadReport = (report: "income" | "balance" | "cashflow" | "journal", date: string) =>
+  saveFile(`/reports/export.xlsx${query({ report, date })}`, `${report}.xlsx`)
+
+// downloadEntries saves the transaction list with the same filters as the screen, as CSV or Excel.
+export const downloadEntries = (format: "csv" | "xlsx", { page: _p, limit: _l, ...filters }: EntryQuery) =>
+  saveFile(`/entries/export${query({ ...filters, format })}`, `transaksi.${format}`)
+
+async function saveFile(path: string, fallbackName: string) {
+  const go = () => fetch(`/api/v1${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
   let res = await go()
   if (res.status === 401 && (await refresh())) res = await go()
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(res.status, body.error ?? res.statusText, undefined, body.code)
   }
-  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? `${report}.xlsx`
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName
   const url = URL.createObjectURL(await res.blob())
   Object.assign(document.createElement("a"), { href: url, download: name }).click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)

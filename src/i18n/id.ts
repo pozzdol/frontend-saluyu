@@ -1152,6 +1152,25 @@ export const id = {
     ctaTitle: "Mulai tahu ke mana uangmu pergi.",
     ctaSub: "Siapkan dalam beberapa menit, catat dalam beberapa detik.",
   },
+  // Fase 14
+  fase14: {
+    carryHint: "+ sisa {amount} dari periode lalu",
+    carryDebt: "− kurang {amount} dari periode lalu",
+    carryLabel: "Bawa sisa ke periode berikutnya",
+    carryAria: "Bawa sisa anggaran {name} ke periode berikutnya",
+    groupAria: "Kelompok {name}",
+    needs: "Kebutuhan",
+    wants: "Keinginan",
+    savings: "Tabungan",
+    noGroup: "Tanpa",
+    splitTitle: "Kebutuhan, keinginan, tabungan",
+    splitIntro: "Berapa bagian pemasukan periode ini yang dipakai tiap kelompok, dibanding pola 50/30/20.",
+    splitNoIncome: "Belum ada pemasukan di periode ini, jadi bagiannya belum bisa dihitung.",
+    splitShare: "{amount} · {pct}% dari pemasukan (target {target}%)",
+    exportCsv: "Unduh CSV",
+    exportXlsx: "Unduh Excel",
+    balance: "Saldo",
+  },
 }
 
 export type Dict = typeof id

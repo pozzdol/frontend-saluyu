@@ -1152,4 +1152,24 @@ export const en: Dict = {
     },
     ctaTitle: "Start knowing where your money goes.",
     ctaSub: "Set up in minutes, record in seconds.",
-  },}
+  },
+  // Fase 14
+  fase14: {
+    carryHint: "+ {amount} left over from last period",
+    carryDebt: "− {amount} overspent last period",
+    carryLabel: "Carry what is left to the next period",
+    carryAria: "Carry the {name} budget to the next period",
+    groupAria: "Group of {name}",
+    needs: "Needs",
+    wants: "Wants",
+    savings: "Savings",
+    noGroup: "None",
+    splitTitle: "Needs, wants, savings",
+    splitIntro: "How much of this period's income each group used, against the 50/30/20 pattern.",
+    splitNoIncome: "No income in this period yet, so the shares cannot be worked out.",
+    splitShare: "{amount} · {pct}% of income (target {target}%)",
+    exportCsv: "Download CSV",
+    exportXlsx: "Download Excel",
+    balance: "Balance",
+  },
+}
