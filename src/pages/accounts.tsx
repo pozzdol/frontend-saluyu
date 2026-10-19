@@ -163,7 +163,7 @@ export function Accounts() {
   )
 
   // Fixed assets get their own group under Asset: they are owned, not spendable.
-  const groups = typeOrder.flatMap((type) => type === "Asset"
+  const groups = typeOrder.flatMap((type): { type: AccountType; fixed: boolean; rows: Account[] }[] => type === "Asset"
     ? [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type && !isFixedAsset(a)) ?? [] },
        { type, fixed: true, rows: accounts?.filter(isFixedAsset) ?? [] }]
     : [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type) ?? [] }])

@@ -32,7 +32,7 @@ function Tile({ label, value, format = fmtIDR, step = 100, note, tone }: { label
 // BudgetBar: width is capped at 100%; the text says how far over, so colour is not the only signal.
 export function BudgetBar({ row }: { row: BudgetRow }) {
   const t = useT()
-  const pct = row.budget > 0 ? Math.min(100, (row.actual / row.budget) * 100) : 0
+  const pct = row.available > 0 ? Math.min(100, (row.actual / row.available) * 100) : row.actual > 0 ? 100 : 0
   const near = !row.over && pct >= 80
   const bar = useTween<HTMLDivElement>(pct, (el, n) => (el.style.width = `${n}%`))
   return (
@@ -40,7 +40,7 @@ export function BudgetBar({ row }: { row: BudgetRow }) {
       <div className="flex flex-wrap justify-between gap-x-3 text-sm">
         <span>{row.name}</span>
         <span className="tabular-nums text-muted-foreground">
-          {row.budget > 0 ? t("dash.ofBudget", { actual: fmtIDR(row.actual), budget: fmtIDR(row.budget) }) : t("dash.spentNoBudget", { actual: fmtIDR(row.actual) })}
+          {row.budget > 0 ? t("dash.ofBudget", { actual: fmtIDR(row.actual), budget: fmtIDR(row.available) }) : t("dash.spentNoBudget", { actual: fmtIDR(row.actual) })}
           {row.budget > 0 && (
             <span className={cn("ml-2 font-medium", row.over ? "text-rose-700" : near ? "text-amber-800" : "text-emerald-700")}>
               {row.over ? t("dash.overBy", { amount: fmtIDR(-row.remaining) }) : t("dash.left", { amount: fmtIDR(row.remaining) })}
@@ -49,6 +49,11 @@ export function BudgetBar({ row }: { row: BudgetRow }) {
           )}
         </span>
       </div>
+      {row.budget_carry && row.carry !== 0 && (
+        <span className="text-xs text-muted-foreground">
+          {t(row.carry > 0 ? "fase14.carryHint" : "fase14.carryDebt", { amount: fmtIDR(Math.abs(row.carry)) })}
+        </span>
+      )}
       <div
         role="meter"
         aria-label={t("dash.budgetUsed", { name: row.name })}

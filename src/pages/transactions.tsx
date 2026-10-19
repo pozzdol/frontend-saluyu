@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronLeft, ChevronRight, Download, Loader2, SlidersHorizontal } from "lucide-react"
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
 import { AmountField, CheckboxField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   ApiError,
+  downloadEntries,
   isFixedAsset,
   isMoney,
   perContact,
@@ -250,6 +251,7 @@ export function Transactions({ user }: { user: User }) {
   const total = data ? data.total - (data.entries.length - (entries?.length ?? 0)) : 0
   const filtered = [q.q, q.kind, q.account_id, q.from, q.to, q.amount_min, q.amount_max].some(Boolean)
   const empty = data && entries?.length === 0 ? t(filtered ? "tx.noMatch" : "tx.empty") : undefined
+  const showBalance = !!q.account_id // the running balance only makes sense for one account
   const clearFilters = () => set({ q: "", kind: "", account_id: "", from: "", to: "", amount_min: undefined, amount_max: undefined })
 
   useEffect(() => {
@@ -274,6 +276,12 @@ export function Transactions({ user }: { user: User }) {
         <section aria-labelledby="journal-title" className="grid gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <h2 id="journal-title" className="mr-auto text-lg font-semibold"><Term k="journal">{t("tx.journal")}</Term></h2>
+            {(["csv", "xlsx"] as const).map((f) => (
+              <Button key={f} variant="ghost" size="sm" className="rounded-sm"
+                onClick={() => downloadEntries(f, q).catch((e) => setLoadErr(toFormError(e)))}>
+                <Download /> {t(f === "csv" ? "fase14.exportCsv" : "fase14.exportXlsx")}
+              </Button>
+            ))}
             <JournalFilters q={q} set={set} accounts={accountOptionsSorted} />
           </div>
 
@@ -294,6 +302,7 @@ export function Transactions({ user }: { user: User }) {
                       <span className="w-full truncate">
                         {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")} → {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")}
                       </span>
+                      {showBalance && e.balance_after !== undefined && <span className="tabular-nums">{t("fase14.balance")} {fmtIDR(e.balance_after)}</span>}
                     </>
                   }
                   value={fmtIDR(amountOf(e))}
@@ -312,6 +321,7 @@ export function Transactions({ user }: { user: User }) {
                 <th>{t("common.note")}</th>
                 <th>{t("tx.debitCredit")}</th>
                 <th className="text-right!">{t("common.amount")}</th>
+                {showBalance && <th className="text-right!">{t("fase14.balance")}</th>}
                 <th><span className="sr-only">{t("tx.actions")}</span></th>
               </tr>
             </thead>
@@ -334,6 +344,7 @@ export function Transactions({ user }: { user: User }) {
                       {cr} <span className="text-muted-foreground">→</span> {dr}
                     </td>
                     <td className="text-right font-medium whitespace-nowrap tabular-nums">{fmtIDR(amountOf(e))}</td>
+                    {showBalance && <td className="text-right whitespace-nowrap tabular-nums">{e.balance_after !== undefined ? fmtIDR(e.balance_after) : ""}</td>}
                     <td className="text-right">
                       <Button variant="ghost" size="icon-sm" aria-label={t("ed.open", { no: e.entry_no })} onClick={() => setOpenId(e.id)}>
                         <ChevronRight />
@@ -344,7 +355,7 @@ export function Transactions({ user }: { user: User }) {
               })}
               {empty && (
                 <tr>
-                  <td colSpan={7} className="py-10! text-center text-muted-foreground">
+                  <td colSpan={showBalance ? 8 : 7} className="py-10! text-center text-muted-foreground">
                     {empty}
                     {filtered && <Button variant="link" className="ml-1 h-auto p-0" onClick={clearFilters}>{t("common.clearFilters")}</Button>}
                   </td>
