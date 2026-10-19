@@ -6,6 +6,7 @@ import { toast } from "@/components/toast"
 import { Button } from "@/components/ui/button"
 import { disableTOTP, enableTOTP, endSession, listSessions, revokeOtherSessions, setupTOTP, type SessionInfo, type User } from "@/lib/api"
 import { intlLocale, useT } from "@/lib/i18n"
+import { Loading, Skeleton } from "@/components/skeleton"
 
 // device turns a User-Agent into "Chrome · Android". Good enough to recognise your own devices.
 function device(ua: string) {
@@ -51,7 +52,16 @@ export function Sessions() {
     <section className="grid gap-3">
       <h3 className="font-medium">{t("sec.sessions")}</h3>
       <Status err={err} ok="" />
-      {!list && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+      {!list && !err.message && (
+        <Loading className="gap-0 divide-y rounded-sm border">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+              <Skeleton className="size-5 shrink-0" />
+              <div className="grid flex-1 gap-1.5"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-24" /></div>
+            </div>
+          ))}
+        </Loading>
+      )}
       <ul className="divide-y rounded-sm border">
         {list?.map((s) => {
           const d = device(s.user_agent)

@@ -32,6 +32,7 @@ import { Term } from "@/components/term"
 import { t, useT, type Key } from "@/lib/i18n"
 import { EntryDetailSheet } from "@/components/entry-detail"
 import { toast } from "@/components/toast"
+import { Loading, Skeleton, SkeletonCards, SkeletonRows } from "@/components/skeleton"
 
 // daysBetween counts whole days from date a to date b (YYYY-MM-DD), DST-safe via UTC.
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5)
@@ -247,6 +248,7 @@ export function Transactions({ user }: { user: User }) {
   const total = data ? data.total - (data.entries.length - (entries?.length ?? 0)) : 0
   const filtered = [q.q, q.kind, q.account_id, q.from, q.to, q.amount_min, q.amount_max].some(Boolean)
   const empty = data && entries?.length === 0 ? t(filtered ? "tx.noMatch" : "tx.empty") : undefined
+  const loading = !data && !loadErr.message
   const showBalance = !!q.account_id // the running balance only makes sense for one account
   const clearFilters = () => set({ q: "", kind: "", account_id: "", from: "", to: "", amount_min: undefined, amount_max: undefined })
 
@@ -281,7 +283,8 @@ export function Transactions({ user }: { user: User }) {
             <JournalFilters q={q} set={set} accounts={accountOptionsSorted} />
           </div>
 
-          <MobileList className="md:block lg:hidden" empty={empty}>
+          {loading && <Loading className="lg:hidden"><SkeletonCards count={5} /></Loading>}
+          {!loading && <MobileList className="md:block lg:hidden" empty={empty}>
             {entries?.map((e) => {
               const side = e.kind === "income" ? e.lines.filter((l) => l.credit > 0) : e.lines.filter((l) => l.debit > 0)
               const parts = side.map((l) => l.contact_name ?? l.name)
@@ -307,9 +310,10 @@ export function Transactions({ user }: { user: User }) {
                 />
               )
             })}
-          </MobileList>
+          </MobileList>}
 
-          <TableCard className="hidden lg:block">
+          {loading && <Loading className="hidden lg:grid"><SkeletonRows rows={8} head cols={["text", "short", "short", "text", "amount"]} /></Loading>}
+          {!loading && <TableCard className="hidden lg:block">
             <thead>
               <tr>
                 <th>{t("tx.no")}</th>
@@ -359,10 +363,10 @@ export function Transactions({ user }: { user: User }) {
                 </tr>
               )}
             </tbody>
-          </TableCard>
+          </TableCard>}
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{data ? (total === 1 ? t("tx.countOne") : t("tx.count", { n: total })) : t("common.loading")}</span>
+            <span>{data ? (total === 1 ? t("tx.countOne") : t("tx.count", { n: total })) : loadErr.message ? null : <Skeleton className="h-4 w-20" />}</span>
             <span className="flex items-center gap-2">
               <Button variant="outline" size="icon-sm" aria-label={t("tx.prevPage")} disabled={(q.page ?? 1) <= 1} onClick={() => set({ page: (q.page ?? 1) - 1 })}>
                 <ChevronLeft />

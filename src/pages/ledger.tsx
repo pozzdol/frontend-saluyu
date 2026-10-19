@@ -11,6 +11,7 @@ import { DatePicker, fmtDate } from "@/components/picker"
 import { Info, Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import { EntryDetailSheet } from "@/components/entry-detail"
+import { Loading, SkeletonCards, SkeletonRows } from "@/components/skeleton"
 
 // LedgerPage is one account's history with a running balance (the Excel "Buku Besar" sheet).
 export function LedgerPage({ id }: { id: string }) {
@@ -58,6 +59,12 @@ export function LedgerPage({ id }: { id: string }) {
           </div>
         )}
 
+        {!ledger && !err.message && (
+          <Loading>
+            <div className="md:hidden"><SkeletonCards count={5} /></div>
+            <div className="max-md:hidden"><SkeletonRows rows={8} head cols={["short", "text", "amount", "amount", "amount"]} /></div>
+          </Loading>
+        )}
         {ledger && (
           <MobileList empty={ledger.rows.length === 0 ? t("ledger.empty") : undefined}>
             <MobileItem title={t("ledger.opening")} meta={range.from ? t("ledger.before", { date: fmtDate(range.from) }) : undefined} value={fmtIDR(ledger.opening)} />

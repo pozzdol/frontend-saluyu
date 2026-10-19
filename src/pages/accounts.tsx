@@ -15,6 +15,7 @@ import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { Info, Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import { IconButton } from "@/components/account-icon"
+import { Loading, SkeletonHeading, SkeletonRows } from "@/components/skeleton"
 
 export const typeOrder: AccountType[] = ["Asset", "Liability", "Equity", "Revenue", "Expense"]
 
@@ -229,6 +230,11 @@ export function Accounts() {
         {adding && <NewAccount accounts={accounts ?? []} onCreated={() => (setReload((n) => n + 1), setAdding(false))} onCancel={() => setAdding(false)} />}
         <Status err={err} ok="" />
         <IndonesianNames onDone={() => setReload((n) => n + 1)} />
+        {!accounts && !err.message && (
+          <Loading>
+            {[4, 3, 2].map((n, i) => <div key={i} className="grid gap-2"><SkeletonHeading /><SkeletonRows rows={n} cols={["short", "text", "text", "short"]} /></div>)}
+          </Loading>
+        )}
 
         {groups.map(({ type, fixed, rows }) => {
           if (rows.length === 0) return null

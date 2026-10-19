@@ -16,6 +16,7 @@ import { useCount, useTween } from "@/lib/motion"
 import { DueList } from "@/pages/recurring"
 import { InsightsTop, TrendsAndHealth } from "@/pages/insights"
 import { Goals } from "@/pages/goals"
+import { Loading, Skeleton, SkeletonHeading, SkeletonRows, SkeletonTile } from "@/components/skeleton"
 
 // Tile counts to its value, so switching period shows which way each number moved.
 function Tile({ label, value, format = fmtIDR, step = 100, note, tone }: { label: ComponentChildren; value: number; format?: (n: number) => string; step?: number; note?: string; tone?: string }) {
@@ -96,6 +97,27 @@ function FirstSteps() {
   )
 }
 
+// DashboardSkeleton mirrors the dashboard's own data: the total, four tiles, two tables.
+// InsightsTop and TrendsAndHealth bring their own skeletons below it.
+function DashboardSkeleton() {
+  return (
+    <Loading>
+      <div className="grid gap-2 rounded-sm border bg-card px-4 py-3">
+        <Skeleton className="h-3.5 w-24" />
+        <Skeleton className="h-9 w-56" />
+        <Skeleton className="h-3 w-40" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => <SkeletonTile key={i} />)}
+      </div>
+      <div className="grid items-start gap-6 md:grid-cols-2">
+        <div className="grid gap-3"><SkeletonHeading /><SkeletonRows rows={3} /></div>
+        <div className="grid gap-3"><SkeletonHeading /><SkeletonRows rows={4} /></div>
+      </div>
+    </Loading>
+  )
+}
+
 export function DashboardPage() {
   const t = useT()
   const [date, setDate] = usePeriodDate()
@@ -111,6 +133,7 @@ export function DashboardPage() {
     <AppShell title={t("dash.title")} actions={<PeriodPicker period={d?.period} onChange={setDate} />}>
       <div className="grid gap-6">
         <Status err={err} ok="" />
+        {!d && !err.message && <DashboardSkeleton />}
         {d && (
           // "Total uangku" first: the one number everyone looks for.
           <section className="rounded-sm border bg-card px-4 py-3">

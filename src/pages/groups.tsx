@@ -1,6 +1,7 @@
 import { Check, Copy, Link2, Loader2, LogOut, Mail, MessageCircle, Pencil, Plus, ShieldCheck, X } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, TableCard } from "@/components/app-shell"
+import { Loading, Skeleton, SkeletonRows, SkeletonText } from "@/components/skeleton"
 import { Field, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
 import { SelectPicker } from "@/components/picker"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
@@ -156,6 +157,7 @@ function SummaryTable({ group, date, onPeriod }: { group: Group; date: string; o
   return (
     <>
       <Status err={err} ok="" />
+      {!rows && !err.message && <Loading><SkeletonRows rows={2} cols={["text", "amount", "amount"]} head /></Loading>}
       {rows && (
         <ul className="grid gap-3 md:hidden">
           {rows.map((s) => (
@@ -433,6 +435,15 @@ export function GroupsPage({ user }: { user: User }) {
           </CardContent>
         </Card>
 
+        {!groups && !err.message && (
+          <Loading>
+            <div className="grid gap-5 rounded-sm border bg-card p-4">
+              <div className="flex items-center justify-between gap-4"><Skeleton className="h-5 w-40" /><Skeleton className="h-8 w-24" /></div>
+              <SkeletonText lines={3} className="max-w-sm" />
+              <SkeletonRows rows={2} cols={["text", "amount", "amount"]} head />
+            </div>
+          </Loading>
+        )}
         {groups?.map((g) => <GroupCard key={g.id} group={g} me={user} date={date} onChange={changed} />)}
         {groups && groups.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("grp.none")}</p>

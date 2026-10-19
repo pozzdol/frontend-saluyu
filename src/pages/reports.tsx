@@ -27,6 +27,7 @@ import {
 import { t, useT } from "@/lib/i18n"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
 import { toast } from "@/components/toast"
+import { Loading, SkeletonRows } from "@/components/skeleton"
 
 const views = { pl: "report.pl", bs: "report.bs", cf: "report.cf", tax: "report.tax" } as const
 type View = keyof typeof views
@@ -189,6 +190,8 @@ export function ReportsPage() {
         <h2 className="hidden text-lg font-semibold print:block">
           {t(views[view])} · {view === "pl" ? pl?.period.label : view === "cf" ? cf?.period.label : view === "bs" ? fmtDate(bs?.as_of ?? date) : year}
         </h2>
+
+        {!err.message && !{ pl, bs, cf, tax }[view] && <Loading><SkeletonRows rows={9} /></Loading>}
 
         {view === "pl" && pl && (
           <TableCard>

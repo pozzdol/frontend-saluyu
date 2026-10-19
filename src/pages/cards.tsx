@@ -8,6 +8,7 @@ import { DayOfMonthPicker, fmtDate, useIsMobile } from "@/components/picker"
 import { Segmented } from "@/components/segmented"
 import { Info, Term } from "@/components/term"
 import { toast } from "@/components/toast"
+import { Loading, Skeleton, SkeletonCards, SkeletonRows } from "@/components/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -207,6 +208,22 @@ function NewPlan({ accounts, onDone, onCancel }: { accounts: Account[]; onDone: 
   )
 }
 
+// DetailSkeleton mirrors CardPage/PlanPage: the summary card (line, four stats, action), then a list.
+function DetailSkeleton({ rows }: { rows: number }) {
+  return (
+    <Loading>
+      <div className="grid gap-4 rounded-sm border bg-card p-4">
+        <Skeleton className="h-3.5 w-56" />
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="grid gap-2"><Skeleton className="h-3.5 w-20" /><Skeleton className="h-6 w-28" /></div>)}
+        </div>
+        <Skeleton className="h-11 w-48" />
+      </div>
+      <SkeletonRows rows={rows} cols={["short", "text", "amount"]} head />
+    </Loading>
+  )
+}
+
 export function CardsPage() {
   const t = useT()
   const [cards, setCards] = useState<CardSummary[] | null>(null)
@@ -233,6 +250,7 @@ export function CardsPage() {
             {adding !== "card" && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding("card")}><Plus /> {t("cc.addCard")}</Button>}
           </div>
           {adding === "card" && <Card className="rounded-sm"><CardContent><NewCard onDone={() => (done(), setAdding(""))} onCancel={() => setAdding("")} /></CardContent></Card>}
+          {!cards && !err.message && <SkeletonCards count={2} bar />}
           {cards && (adding !== "card" || shownCards.length > 0) && (
             <MobileList empty={shownCards.length === 0 ? t("cc.noCards") : undefined} className="md:block">
               {shownCards.map((c) => (
@@ -256,6 +274,7 @@ export function CardsPage() {
             {adding !== "plan" && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding("plan")}><Plus /> {t("cc.addPlan")}</Button>}
           </div>
           {adding === "plan" && <Card className="rounded-sm"><CardContent><NewPlan accounts={accounts} onDone={() => (done(), setAdding(""))} onCancel={() => setAdding("")} /></CardContent></Card>}
+          {!plans && !err.message && <SkeletonCards count={2} />}
           {plans && (adding !== "plan" || plans.length > 0) && (
             <MobileList empty={plans.length === 0 ? t("cc.noPlans") : undefined} className="md:block">
               {plans.map((p) => (
@@ -383,6 +402,7 @@ export function CardPage({ id }: { id: string }) {
     <AppShell title={c?.account.name ?? t("cc.card")}
       back={{ href: "/app/cards", label: t("nav.cards") }}>
       <Status err={err} ok="" />
+      {!c && !err.message && <DetailSkeleton rows={4} />}
       {c && (
         <div className="grid gap-6">
           <Card className="rounded-sm bg-gradient-to-b from-[#eaf2ff]/70 to-white">
@@ -495,6 +515,7 @@ export function PlanPage({ id }: { id: string }) {
     <AppShell title={p?.account.name ?? t("cc.plan")} term="installment"
       back={{ href: "/app/cards", label: t("nav.cards") }}>
       <Status err={err} ok="" />
+      {!p && !err.message && <DetailSkeleton rows={6} />}
       {p && (
         <div className="grid gap-6">
           <Card className="rounded-sm bg-gradient-to-b from-[#eaf2ff]/70 to-white">

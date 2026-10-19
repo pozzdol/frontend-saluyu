@@ -10,6 +10,7 @@ import { DatePicker, fmtDate } from "@/components/picker"
 import { Switch } from "@/components/ui/switch"
 import { Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
+import { Loading, SkeletonCards, SkeletonRows } from "@/components/skeleton"
 
 // TrialBalancePage replaces the Excel "Neraca" sheet, whose SUM range skipped rows.
 // Every account is listed, so total debit must always equal total credit.
@@ -63,6 +64,12 @@ export function TrialBalancePage() {
           </div>
         )}
 
+        {!tb && !err.message && (
+          <Loading>
+            <div className="md:hidden"><SkeletonCards count={6} /></div>
+            <div className="max-md:hidden"><SkeletonRows rows={10} head cols={["short", "text", "amount", "amount"]} /></div>
+          </Loading>
+        )}
         {tb && (
           <MobileList empty={rows.length === 0 ? t("tb.empty") : undefined}>
             {rows.map((r) => (

@@ -9,6 +9,7 @@ import { cashCount, getBalance, listAccounts, reconcile, type Account } from "@/
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { Info } from "@/components/term"
 import { useT } from "@/lib/i18n"
+import { Skeleton } from "@/components/skeleton"
 
 type Mode = "cash" | "bank"
 
@@ -120,7 +121,7 @@ export function ReconcilePage() {
               <DateField name="date" label={t("common.date")} value={date} onChange={setDate} />
 
               <div className="grid grid-cols-3 gap-2 rounded-sm bg-[#f7f8fa] p-3 text-sm sm:col-span-2">
-                <p><span className="block text-muted-foreground">{t("rec.inBooks")}</span><span className="font-semibold tabular-nums">{book === null ? "…" : fmtIDR(book)}</span></p>
+                <p><span className="block text-muted-foreground">{t("rec.inBooks")}</span><span className="font-semibold tabular-nums">{book === null ? <Skeleton className="h-5 w-24" /> : fmtIDR(book)}</span></p>
                 <p><span className="block text-muted-foreground">{t("rec.counted")}</span><span className="font-semibold tabular-nums">{actualSen >= 0 ? fmtIDR(actualSen) : "—"}</span></p>
                 <p>
                   <span className="block text-muted-foreground">{t("rec.difference")}</span>

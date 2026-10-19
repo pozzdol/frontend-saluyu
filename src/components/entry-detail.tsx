@@ -31,6 +31,7 @@ import {
 import { t as tr, useT, type Key } from "@/lib/i18n"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
 import { kindBadge, kinds } from "@/pages/transactions"
+import { Loading, Skeleton, SkeletonAmount, SkeletonText } from "@/components/skeleton"
 
 const total = (lines: Line[]) => lines.reduce((s, l) => s + l.debit, 0)
 const rupiah = (sen: number) => (sen / 100).toLocaleString("id-ID") // what AmountField shows and toSen reads back
@@ -379,7 +380,15 @@ export function EntryDetailSheet({ id, onClose }: { id: string | null; onClose: 
     <Sheet open={id !== null} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side={mobile ? "bottom" : "right"} title={editing ? t("ed.editTitle") : t("ed.title")}>
         <Status err={err} ok="" />
-        {!d && !err.message && <Loader2 className="mx-auto my-8 size-5 animate-spin text-muted-foreground" />}
+        {!d && !err.message && (
+          <Loading className="gap-4 pb-2">
+            <div className="flex items-center gap-2"><Skeleton className="h-5 w-16" /><Skeleton className="h-4 w-24" /></div>
+            <div className="w-48"><SkeletonAmount size="xl" /></div>
+            <SkeletonText lines={2} />
+            <Skeleton className="h-10 w-full" />
+            <div className="flex gap-2"><Skeleton className="h-9 flex-1" /><Skeleton className="h-9 w-24" /></div>
+          </Loading>
+        )}
         {d && !editing && <View d={d} onEdit={() => setEditing(true)} onDelete={() => remove(d.entry)} onReverse={() => reverse(d.entry)} />}
         {d && editing && (
           <div className="grid gap-3 pb-2">

@@ -1,6 +1,7 @@
 import { FileUp, Loader2, Plus, Trash2 } from "lucide-react"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList } from "@/components/app-shell"
+import { Loading, Skeleton, SkeletonRows } from "@/components/skeleton"
 import { Field, SelectField, Status, accountOptions, toFormError, type FormError } from "@/components/field"
 import { SelectPicker, fmtDate } from "@/components/picker"
 import { toast } from "@/components/toast"
@@ -210,7 +211,11 @@ export function ImportPage({ user }: { user: User }) {
         <p className="max-w-2xl text-sm text-muted-foreground">{t("imp.intro")}</p>
         <Card className="rounded-sm">
           <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
-            <SelectField name="account" label={t("imp.account")} value={accountId} onChange={(v) => (setAccountId(v), setPreview(null))} options={accountOptions(money)} />
+            {accounts.length === 0 && !err.message ? (
+              <Loading className="gap-1.5"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-11 w-full md:h-10" /></Loading>
+            ) : (
+              <SelectField name="account" label={t("imp.account")} value={accountId} onChange={(v) => (setAccountId(v), setPreview(null))} options={accountOptions(money)} />
+            )}
             {/* Our own button and file name: the browser's own control speaks the browser's language. */}
             <label className="grid min-w-0 gap-1.5 text-sm">
               <span className="font-medium">{t("imp.file")}</span>
@@ -228,6 +233,7 @@ export function ImportPage({ user }: { user: User }) {
         </Card>
         <Status err={err} ok="" />
 
+        {busy && !preview && <Loading><SkeletonRows rows={6} cols={["short", "text", "amount"]} head /></Loading>}
         {preview && (
           <section className="grid grid-cols-[minmax(0,1fr)] gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">

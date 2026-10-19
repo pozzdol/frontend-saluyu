@@ -4,6 +4,7 @@ import { AppShell, MobileItem, MobileList } from "@/components/app-shell"
 import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
 import { SelectPicker, fmtDate } from "@/components/picker"
 import { Segmented } from "@/components/segmented"
+import { Loading, SkeletonRows } from "@/components/skeleton"
 import { toast } from "@/components/toast"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -231,6 +232,7 @@ export function RecurringPage() {
               <RuleForm key={editing === "new" ? "new" : editing.id} rule={editing === "new" ? undefined : editing} accounts={accounts} onDone={done} />
             </CardContent></Card>
           )}
+          {!rules && !err.message && <Loading><SkeletonRows rows={3} cols={["text", "short", "amount"]} /></Loading>}
           {rules && (
             <MobileList empty={rules.length === 0 ? t("rcr.none") : undefined} className="md:block">
               {rules.map((r) => (

@@ -5,6 +5,7 @@ import { AmountField, Status, toFormError, type FormError } from "@/components/f
 import { PeriodFields, type PeriodSettings } from "@/components/period-picker"
 import { Logo } from "@/components/site"
 import { Button } from "@/components/ui/button"
+import { Loading, Skeleton } from "@/components/skeleton"
 import { createAccount, listAccounts, putBudget, setOpening, updateAccount, updateProfile, type Account, type User } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
@@ -107,6 +108,7 @@ export function WelcomePage({ user }: { user: User }) {
     }
   }
 
+  const loadingAccounts = accounts.length === 0 && !err.message
   const steps = [t("wel.s1"), t("wel.s2"), t("wel.s3"), t("wel.s4")]
   const next = (
     <Button className="h-11 rounded-sm px-8" disabled={busy || (step === 1 && bad.length > 0)} onClick={() => (step < 3 ? setStep(step + 1) : finish())}>
@@ -176,6 +178,11 @@ export function WelcomePage({ user }: { user: User }) {
             <div className="grid gap-4">
               <fieldset className="grid gap-2">
                 <legend className="text-sm font-medium">{t("f12.categories")}</legend>
+                {loadingAccounts && (
+                  <Loading className="flex flex-wrap gap-2">
+                    {[20, 24, 16, 28, 20, 24].map((w, i) => <Skeleton key={i} className="h-9 rounded-full" style={{ width: `${w * 4}px` }} />)}
+                  </Loading>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {categories.map((a) => {
                     const on = !unused.includes(a.id)
@@ -192,6 +199,11 @@ export function WelcomePage({ user }: { user: User }) {
                 <p className="text-xs text-muted-foreground">{t("f12.categoriesHint")}</p>
               </fieldset>
               <p className="text-sm text-muted-foreground">{t("wel.s4Hint")}</p>
+              {loadingAccounts && (
+                <Loading className="gap-4">
+                  {[0, 1, 2].map((i) => <div key={i} className="grid gap-1.5"><Skeleton className="h-3.5 w-32" /><Skeleton className="h-11 w-full md:h-10" /></div>)}
+                </Loading>
+              )}
               {budgetAccounts.map((a) => (
                 <AmountField key={a.id} name={`budget-${a.code}`} label={t("wel.budgetFor", { name: a.name })} placeholder={t("common.optional")}
                   defaultValue={budgets[a.id] ?? ""} onInput={(e) => { const v = (e.currentTarget as HTMLInputElement).value; setBudgets((m) => ({ ...m, [a.id]: v })) }} />

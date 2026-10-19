@@ -4,6 +4,7 @@ import { toast } from "@/components/toast"
 import { Switch } from "@/components/ui/switch"
 import { getNotifyPrefs, putNotifyPrefs, type NotifyPrefs, type User } from "@/lib/api"
 import { useT, type Key } from "@/lib/i18n"
+import { Loading, Skeleton } from "@/components/skeleton"
 
 const kinds: [keyof NotifyPrefs, Key, Key][] = [
   ["due_bills", "notify.dueBills", "notify.dueBillsHint"],
@@ -36,6 +37,16 @@ export function Reminders({ user }: { user: User }) {
       <p className="text-xs text-muted-foreground">{t("notify.hint")}</p>
       {!user.email_verified && <p className="rounded-sm border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{t("notify.unverified")}</p>}
       <Status err={err} ok="" />
+      {!prefs && !err.message && (
+        <Loading className="gap-3">
+          {kinds.map(([key]) => (
+            <div key={key} className="flex items-start justify-between gap-3">
+              <div className="grid gap-1.5"><Skeleton className="h-4 w-36" /><Skeleton className="h-3 w-56 max-w-full" /></div>
+              <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
+            </div>
+          ))}
+        </Loading>
+      )}
       {prefs &&
         kinds.map(([key, label, hint]) => (
           <label key={key} className="flex items-start justify-between gap-3 text-sm">

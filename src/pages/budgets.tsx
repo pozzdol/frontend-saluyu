@@ -15,6 +15,7 @@ import { ApiError, createAccount, getBudgets, listAccounts, putBudget, updateAcc
 import { t, useT } from "@/lib/i18n"
 import { cn, fmtIDR, toSen } from "@/lib/utils"
 import { Goals } from "@/pages/goals"
+import { Loading, Skeleton, SkeletonCards } from "@/components/skeleton"
 
 const NEW = "__new__" // the "new category" choice in the picker
 
@@ -295,6 +296,15 @@ export function BudgetsPage() {
             onCancel={() => setAdding(null)} />
         )}
 
+        {!list && !err.message && (
+          <Loading className="gap-4">
+            <SkeletonCards count={4} bar />
+            <div className="grid gap-3 rounded-sm border p-4">
+              <Skeleton className="h-4 w-40" />
+              {[0, 1, 2].map((i) => <div key={i} className="grid gap-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-2 w-full" /></div>)}
+            </div>
+          </Loading>
+        )}
         {list && (
           <MobileList empty={rows.length === 0 ? t("budget.none") : undefined}>
             {rows.map((r) => <Card key={r.account_id} row={r} date={list.period.start} onSaved={saved} onRemove={() => remove(r)} onChanged={() => setReload((n) => n + 1)} />)}

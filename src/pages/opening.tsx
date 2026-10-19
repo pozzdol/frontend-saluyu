@@ -25,6 +25,7 @@ import { typeDot } from "@/pages/accounts"
 import { Term } from "@/components/term"
 import { useT } from "@/lib/i18n"
 import { toast } from "@/components/toast"
+import { Loading, SkeletonHeading, SkeletonRows } from "@/components/skeleton"
 
 // Amounts read like everywhere else: "400.000", tidied when the field is left.
 const plain = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 })
@@ -77,6 +78,7 @@ export function OpeningPage({ user }: { user: User }) {
     ...personItems.filter((it) => !(it.amount >= 0)).map((it) => it.label),
   ]
   const firstTime = !user.start_date
+  const loading = !opening && !err.message
 
   async function onSubmit(e: SubmitEvent) {
     e.preventDefault()
@@ -141,6 +143,11 @@ export function OpeningPage({ user }: { user: User }) {
               </CardContent>
             </Card>
 
+            {loading && (
+              <Loading>
+                {[4, 2].map((n, i) => <div key={i} className="grid gap-2"><SkeletonHeading /><SkeletonRows rows={n} cols={["short", "text", "amount"]} /></div>)}
+              </Loading>
+            )}
             {(["Asset", "Liability"] as const).map((type) => {
               const rows = accounts.filter((a) => a.type === type)
               if (rows.length === 0) return null
@@ -178,7 +185,7 @@ export function OpeningPage({ user }: { user: User }) {
               )
             })}
 
-            <section className="grid gap-2">
+            {!loading && <section className="grid gap-2">
               <h2 className="font-semibold"><Term k="receivable">{t("open.people")}</Term></h2>
               {contacts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -244,7 +251,7 @@ export function OpeningPage({ user }: { user: User }) {
                 </TableCard>
                 </>
               )}
-            </section>
+            </section>}
 
             <Card className="rounded-sm">
               <CardContent className="grid gap-2 text-sm tabular-nums sm:max-w-md">

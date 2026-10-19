@@ -13,6 +13,7 @@ import { deleteEntry, isFixedAsset, isMoney, listAccounts, listCategoryRules, pe
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
+import { Loading, Skeleton } from "@/components/skeleton"
 import { enqueue, isOffline, useOutboxCount } from "@/lib/outbox"
 
 type Kind = PostEntryInput["kind"]
@@ -167,7 +168,11 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
       <fieldset>
         <legend className="mb-2 text-sm text-muted-foreground">{kind === "transfer" ? t("tx.to") : kind === "income" ? t("tx.source") : t("tx.category")}</legend>
         {accounts === null ? (
-          <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+          !err.message && (
+            <Loading className="grid-cols-4 gap-2">
+              {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="min-h-20 rounded-sm border bg-muted/60 [@media(max-height:760px)]:min-h-16" />)}
+            </Loading>
+          )
         ) : (
           <div className="grid grid-cols-4 gap-2">
             {tiles.map((a) => (

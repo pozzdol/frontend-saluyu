@@ -194,3 +194,24 @@
     transform: none !important;
   }
 }
+
+/* Skeletons (components/skeleton.tsx): the blocks breathe in place rather than shimmer across,
+   and the whole group waits 150ms so a quick load never flashes grey. Reduced motion: still. */
+.skeleton {
+    animation: skeleton-breathe 1.6s ease-in-out infinite;
+}
+.skeleton-in {
+    animation: skeleton-in 200ms ease-out 150ms both;
+}
+@keyframes skeleton-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+@keyframes skeleton-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; opacity: 0.7; }
+    .skeleton-in { animation-duration: 0s; }
+}

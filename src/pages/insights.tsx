@@ -8,6 +8,7 @@ import { getHealth, getInsights, getTrends, useEntriesVersion, type Health, type
 import { intlLocale, useT, type Key } from "@/lib/i18n"
 import { cn, fmtIDR, fmtRupiah } from "@/lib/utils"
 import { Soon } from "@/components/app-shell"
+import { Loading, SkeletonChart, SkeletonHeading, SkeletonText, SkeletonTile } from "@/components/skeleton"
 
 function insightText(t: ReturnType<typeof useT>, i: Insight) {
   const vars = { name: i.name ?? "", amount: fmtIDR(i.amount), percent: Math.abs(i.percent).toLocaleString(), points: Math.abs(i.percent).toLocaleString() }
@@ -19,15 +20,33 @@ const dayMonth = (iso: string) => new Intl.DateTimeFormat(intlLocale(), { day: "
 
 const insightIcon = { category_up: TrendingUp, category_down: TrendingDown, savings_up: PiggyBank, savings_down: TrendingDown }
 
+// InsightsTopSkeleton mirrors InsightsTop: the safe-per-day card and tips, then two charts.
+function InsightsTopSkeleton() {
+  return (
+    <Loading>
+      <div className="grid gap-4 md:grid-cols-[1fr_1.4fr]">
+        <SkeletonTile />
+        <div className="grid gap-2 rounded-sm border bg-card p-4"><SkeletonHeading className="w-32" /><SkeletonText lines={3} /></div>
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <SkeletonChart className="h-52" />
+        <SkeletonChart className="h-52" />
+      </div>
+    </Loading>
+  )
+}
+
 // InsightsTop is the first thing on the dashboard: how much is safe to spend each day,
 // what changed, and which budgets are running out.
 export function InsightsTop({ date }: { date: string }) {
   const t = useT()
   const [d, setD] = useState<Insights | null>(null)
+  const [failed, setFailed] = useState(false)
   const version = useEntriesVersion()
   useEffect(() => {
-    getInsights(date).then(setD, () => setD(null))
+    getInsights(date).then((r) => (setFailed(false), setD(r)), () => (setD(null), setFailed(true)))
   }, [date, version])
+  if (!d && !failed) return <InsightsTopSkeleton />
   if (!d) return null
   const safe = d.safe_per_day
   return (
@@ -110,10 +129,11 @@ export function TrendsAndHealth({ date }: { date: string }) {
   const t = useT()
   const [trend, setTrend] = useState<TrendPoint[] | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
+  const [failed, setFailed] = useState(false)
   const version = useEntriesVersion()
   useEffect(() => {
-    getTrends(date).then(setTrend, () => {})
-    getHealth(date).then(setHealth, () => {})
+    getTrends(date).then(setTrend, () => setFailed(true))
+    getHealth(date).then(setHealth, () => setFailed(true))
   }, [date, version])
   const pct = (v: number) => `${Math.round(v * 100)}%`
   // Categories with the most spending over the twelve periods, for the category trend.
@@ -125,6 +145,19 @@ export function TrendsAndHealth({ date }: { date: string }) {
     : []
   return (
     <>
+      {!health && !failed && (
+        <Loading>
+          <div className="grid gap-3">
+            <SkeletonHeading />
+            <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <SkeletonTile key={i} />)}</div>
+          </div>
+        </Loading>
+      )}
+      {!trend && !failed && (
+        <Loading>
+          <div className="grid gap-6 md:grid-cols-2"><SkeletonChart className="h-52" /><SkeletonChart className="h-52" /></div>
+        </Loading>
+      )}
       {health && health.periods === 0 && <Soon>{t("f12.soonHealth")}</Soon>}
       {health && health.periods > 0 && (
         <section className="grid gap-3">

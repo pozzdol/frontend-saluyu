@@ -8,6 +8,7 @@ import { ApiError, deleteGoal, listAccounts, listGoals, perContact, saveGoal, us
 import { useT } from "@/lib/i18n"
 import { toast } from "@/components/toast"
 import { cn, fmtIDR, toSen } from "@/lib/utils"
+import { Loading, SkeletonCards, SkeletonHeading } from "@/components/skeleton"
 
 function GoalForm({ goal, accounts, onDone }: { goal?: Goal; accounts: Account[]; onDone: () => void }) {
   const t = useT()
@@ -84,6 +85,8 @@ export function Goals({ manage = false }: { manage?: boolean }) {
   useEffect(() => {
     Promise.all([listGoals(), listAccounts()]).then(([g, a]) => (setGoals(g), setAccounts(a)), (e) => setErr(toFormError(e)))
   }, [reload, version])
+  // Only the managing view is known to have goals; the dashboard embed stays absent until it knows.
+  if (!goals && manage && !err.message) return <Loading><div className="grid gap-3"><SkeletonHeading /><SkeletonCards count={2} bar /></div></Loading>
   if (!goals || (!manage && goals.length === 0)) return null
   const name = (id: string) => accounts.find((a) => a.id === id)?.name ?? ""
   const done = () => (setEditing(null), setReload((n) => n + 1))

@@ -7,6 +7,7 @@ import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-sh
 import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
 import { SelectPicker, fmtDate } from "@/components/picker"
 import { Segmented } from "@/components/segmented"
+import { Loading, Skeleton, SkeletonHeading, SkeletonRows } from "@/components/skeleton"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -148,6 +149,7 @@ export function ContactsPage() {
         </Card>
 
         <Status err={err} ok="" />
+        {!contacts && !err.message && <Loading><SkeletonRows rows={4} cols={["text", "amount"]} head /></Loading>}
         {contacts && (
           <MobileList empty={contacts.length === 0 ? t("ct.empty") : undefined}>
             {contacts.map((c) => (
@@ -365,6 +367,16 @@ export function ContactPage({ id }: { id: string }) {
     >
       <div className="grid gap-6">
         <Status err={err} ok="" />
+        {!c && !err.message && (
+          <Loading>
+            <div className="flex items-center gap-6 rounded-sm border bg-card p-4">
+              <Skeleton className="size-11" />
+              <div className="grid gap-2"><Skeleton className="h-3.5 w-20" /><Skeleton className="h-6 w-32" /></div>
+              <div className="ml-auto grid gap-2"><Skeleton className="h-3.5 w-36" /><Skeleton className="h-3.5 w-36" /></div>
+            </div>
+            <div className="grid gap-3"><SkeletonHeading /><SkeletonRows rows={4} cols={["short", "text", "amount"]} head /></div>
+          </Loading>
+        )}
         {c && (
           <>
             <Card className="rounded-sm bg-gradient-to-b from-[#eaf2ff]/70 to-white">
