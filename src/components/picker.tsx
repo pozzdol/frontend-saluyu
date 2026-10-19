@@ -176,9 +176,13 @@ const addDays = (s: string, n: number) => iso(new Date(parse(s).getTime() + n * 
 // fmtDate shows "16 Okt 2026": unambiguous, unlike 10/16/2026 vs 16/10/2026.
 export const fmtDate = (s: string) => (s ? fmt({ day: "numeric", month: "short", year: "numeric" }).format(parse(s)) : "")
 
-// fmtPeriod shows a payday period as "25 Sep – 24 Okt 2026" in the current language.
+// fmtPeriod shows a period as "25 Sep – 24 Okt 2026" in the current language; a calendar
+// month reads "Oktober 2026", a week "19 – 25 Okt 2026".
 export function fmtPeriod(p: { start: string; end: string }) {
   const s = parse(p.start), e = parse(p.end)
+  const sameMonth = s.getUTCFullYear() === e.getUTCFullYear() && s.getUTCMonth() === e.getUTCMonth()
+  if (sameMonth && s.getUTCDate() === 1 && new Date(e.getTime() + 86_400_000).getUTCDate() === 1) return fmt({ month: "long", year: "numeric" }).format(s)
+  if (sameMonth) return `${s.getUTCDate()} – ${fmt({ day: "numeric", month: "short", year: "numeric" }).format(e)}`
   const startOpts: Intl.DateTimeFormatOptions = s.getUTCFullYear() === e.getUTCFullYear()
     ? { day: "numeric", month: "short" }
     : { day: "numeric", month: "short", year: "numeric" }
@@ -285,8 +289,9 @@ export function DatePicker({ id, value, onChange, title, placeholder, clearable,
   )
 }
 
-// DayOfMonthPicker picks 1..28 (a payday that exists in every month).
-export function DayOfMonthPicker({ id, value, onChange }: { id?: string; value: number; onChange: (day: number) => void }) {
+// DayOfMonthPicker picks 1..28 (a day that exists in every month), or up to 31 for a payday,
+// which then falls on the last day of shorter months.
+export function DayOfMonthPicker({ id, value, onChange, max = 28 }: { id?: string; value: number; onChange: (day: number) => void; max?: 28 | 31 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   return (
@@ -303,7 +308,7 @@ export function DayOfMonthPicker({ id, value, onChange }: { id?: string; value: 
       }
     >
       <div className="grid grid-cols-7 gap-1">
-        {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+        {Array.from({ length: max }, (_, i) => i + 1).map((d) => (
           <button
             key={d}
             type="button"
@@ -315,7 +320,7 @@ export function DayOfMonthPicker({ id, value, onChange }: { id?: string; value: 
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">{t("picker.payday28")}</p>
+      <p className="mt-3 text-xs text-muted-foreground">{t(max === 28 ? "picker.payday28" : "f12.payday31")}</p>
     </PickerShell>
   )
 }

@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Loader2, Lock, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
+import { ArrowRight, Clock, Loader2, Lock, MoreHorizontal, Pencil, Plus, Trash2, Undo2, X } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useEffect, useState } from "preact/hooks"
 import { AmountField, DateField, Field, SelectField, Status, accountOptions, toFormError, useForm, type FormError } from "@/components/field"
@@ -256,7 +256,7 @@ function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () =
       {d.mirrored && <Note icon={Lock}>{t("ed.mirrored")}</Note>}
 
       <p className="flex flex-wrap items-center gap-2 rounded-sm bg-muted/60 px-3 py-2 text-sm">
-        <span>{e.lines.filter((l) => l.credit > 0).map(who).join(", ")}</span>
+        <span>{e.kind === "opening" ? t("f12.opening") : e.lines.filter((l) => l.credit > 0).map(who).join(", ")}</span>
         <ArrowRight className="size-4 text-muted-foreground" aria-label={t("ed.flowTo")} />
         <span>{e.lines.filter((l) => l.debit > 0).map(who).join(", ")}</span>
       </p>
@@ -289,17 +289,27 @@ function View({ d, onEdit, onDelete, onReverse }: { d: EntryDetail; onEdit: () =
           <Button variant="outline" className="flex-1 rounded-sm" disabled={d.change_pending} onClick={onEdit}><Pencil /> {t("common.edit")}</Button>
         )}
         {e.kind !== "opening" && (
-          <Button variant="ghost" className="rounded-sm" onClick={onReverse} title={t("ed.reverseHint")}>
-            <Undo2 /> {t("ed.reverse")}
-          </Button>
-        )}
-        {e.kind !== "opening" && (
           <Button variant="ghost" className="rounded-sm text-rose-700 hover:text-rose-800" disabled={locked} onClick={onDelete}
             title={locked ? t("errors.entry_locked") : undefined}>
             <Trash2 /> {t("common.delete")}
           </Button>
         )}
       </div>
+
+      {/* Reversing is for closed books; tucked away so it is not mistaken for delete. */}
+      {e.kind !== "opening" && (
+        <details className="text-sm">
+          <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-1.5 text-muted-foreground hover:text-primary md:min-h-8 [&::-webkit-details-marker]:hidden">
+            <MoreHorizontal className="size-4" /> {t("f12.more")}
+          </summary>
+          <div className="mt-1 grid gap-2 rounded-sm border p-3">
+            <p className="text-xs text-muted-foreground">{t("f12.reverseWhen")}</p>
+            <Button variant="outline" className="w-fit rounded-sm" onClick={onReverse} title={t("ed.reverseHint")}>
+              <Undo2 /> {t("ed.reverse")}
+            </Button>
+          </div>
+        </details>
+      )}
 
       {d.revisions && d.revisions.length > 0 && (
         <section className="grid gap-2">

@@ -88,7 +88,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   const active = accounts?.filter((a) => a.is_active && !perContact(a.code)) ?? []
   const wallets = active.filter(shape[kind].wallet)
   const tiles = active
-    .filter((a) => shape[kind].tile(a) && a.id !== wallet)
+    // System categories (interest & fees, unrecorded cash) are not everyday tiles until used.
+    .filter((a) => shape[kind].tile(a) && a.id !== wallet && (a.has_entries || !systemCodes.includes(a.code)))
     .sort((a, b) => b.uses_30d - a.uses_30d || a.code.localeCompare(b.code))
   const today = todayISO()
   const yesterday = dayBefore(today)
@@ -218,6 +219,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
     </div>
   )
 }
+
+const systemCodes = ["5108", "5199"] // Bunga & Denda, Beban Tunai Lain-lain
 
 // QuickAdd is the always-there way to record: a floating button on phones, a sidebar button on desktop.
 export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {

@@ -71,6 +71,60 @@ function NewAccount({ accounts, onCreated, onCancel }: { accounts: Account[]; on
   )
 }
 
+// Books seeded before Fase 12 kept English default names. Only an account still carrying
+// exactly that name is renamed; a name the user chose stays.
+const englishNames: Record<string, [string, string]> = { "1002": ["Cash", "Tunai"], "1004": ["E-wallet", "Dompet Digital"], "5107": ["Admin", "Biaya Admin Bank"] }
+const namesKey = "saluyu.idNamesDismissed"
+
+// IndonesianNames offers to rename those accounts in one tap, until done or dismissed.
+export function IndonesianNames({ onDone }: { onDone?: () => void }) {
+  const t = useT()
+  const [old, setOld] = useState<Account[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<FormError>({})
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(namesKey) === "1") return
+    } catch {
+      /* private mode: ask every time */
+    }
+    listAccounts().then((list) => setOld(list.filter((a) => englishNames[a.code]?.[0] === a.name)), () => {})
+  }, [])
+  if (old.length === 0) return null
+  const dismiss = () => {
+    try {
+      localStorage.setItem(namesKey, "1")
+    } catch {
+      /* private mode */
+    }
+    setOld([])
+  }
+  async function rename() {
+    setBusy(true)
+    try {
+      for (const a of old) await updateAccount(a.id, { name: englishNames[a.code][1] })
+      setOld([])
+      toast(t("f12.renamed"))
+      onDone?.()
+    } catch (e) {
+      setErr(toFormError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="grid gap-2 rounded-sm border border-[#cfe0ff] bg-[#f4f8ff] p-4 text-sm">
+      <h2 className="font-semibold">{t("f12.renameTitle")}</h2>
+      <p className="text-muted-foreground">{t("f12.renameBody", { names: old.map((a) => `${a.name} → ${englishNames[a.code][1]}`).join(", ") })}</p>
+      <Status err={err} ok="" />
+      <div className="flex gap-2">
+        <Button size="sm" className="rounded-sm" disabled={busy} onClick={rename}>{busy && <Loader2 className="animate-spin" />}{t("f12.renameYes")}</Button>
+        <Button size="sm" variant="ghost" onClick={dismiss}>{t("f12.renameNo")}</Button>
+      </div>
+    </section>
+  )
+}
+
 export function Accounts() {
   const t = useT()
   const [accounts, setAccounts] = useState<Account[] | null>(null)
@@ -83,7 +137,7 @@ export function Accounts() {
     listAccounts().then(setAccounts).catch((e) => setErr(toFormError(e)))
   }, [reload])
 
-  const saved = (updated: Account) => setAccounts((list) => list?.map((x) => (x.id === updated.id ? { ...updated, uses_30d: x.uses_30d } : x)) ?? null)
+  const saved = (updated: Account) => setAccounts((list) => list?.map((x) => (x.id === updated.id ? { ...updated, uses_30d: x.uses_30d, has_entries: x.has_entries } : x)) ?? null)
 
   async function toggle(a: Account) {
     setErr({})
@@ -124,6 +178,7 @@ export function Accounts() {
       <div className="grid gap-6">
         {adding && <NewAccount accounts={accounts ?? []} onCreated={() => (setReload((n) => n + 1), setAdding(false))} onCancel={() => setAdding(false)} />}
         <Status err={err} ok="" />
+        <IndonesianNames onDone={() => setReload((n) => n + 1)} />
 
         {typeOrder.map((type) => {
           const rows = accounts?.filter((a) => a.type === type) ?? []

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowLeftRight, BookOpen, ChevronRight, CreditCard, FileUp, NotebookPen, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound } from "lucide-react"
+import { ArrowLeft, ArrowLeftRight, BookOpen, ChevronRight, CreditCard, Eye, EyeOff, FileUp, NotebookPen, Repeat, FileText, Flag, LayoutDashboard, MailWarning, Menu, PiggyBank, Scale, ScanSearch, UserRound, Users, UsersRound, X } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
@@ -7,7 +7,7 @@ import { Logo } from "@/components/site"
 import { resendVerification, useAuth, useInboxCount } from "@/lib/api"
 import { Info, type TermKey } from "@/components/term"
 import { useT, type Key } from "@/lib/i18n"
-import { cn } from "@/lib/utils"
+import { amountsHidden, cn, setAmountsHidden } from "@/lib/utils"
 import { QuickAdd } from "@/components/quick-add"
 import { Toaster } from "@/components/toast"
 
@@ -139,8 +139,9 @@ export function AppShell({ title, term, actions, back, children }: {
         </div>
         <div className="px-3 pb-3"><QuickAdd variant="sidebar" /></div>
         <NavLinks path={path} inbox={inbox} />
+        <div className="px-3 pt-3"><HideAmounts /></div>
         {user && (
-          <p className="truncate px-6 pt-6 text-xs text-muted-foreground" title={user.email}>
+          <p className="truncate px-6 pt-3 text-xs text-muted-foreground" title={user.email}>
             {user.email}
           </p>
         )}
@@ -162,6 +163,7 @@ export function AppShell({ title, term, actions, back, children }: {
           </SheetContent>
         </Sheet>
         <Logo />
+        <div className="ml-auto"><HideAmounts compact /></div>
       </div>
 
       <div className="min-w-0">
@@ -192,10 +194,43 @@ export function AppShell({ title, term, actions, back, children }: {
   )
 }
 
-// VerifyBanner stays until the email is verified: invites to it are hidden until then.
+// HideAmounts is the eye that masks every amount on this device (someone looking over a shoulder).
+function HideAmounts({ compact }: { compact?: boolean }) {
+  const t = useT()
+  const label = amountsHidden ? t("f12.showAmounts") : t("f12.hideAmounts")
+  const Icon = amountsHidden ? Eye : EyeOff
+  return (
+    <button type="button" aria-pressed={amountsHidden} aria-label={label} title={label} onClick={() => setAmountsHidden(!amountsHidden)}
+      className={cn("flex min-h-11 items-center gap-3 rounded-sm px-3 text-foreground/75 hover:bg-[#eaf2ff] hover:text-primary", compact ? "size-11 justify-center px-0" : "w-full text-base lg:min-h-9 lg:text-sm")}>
+      <Icon className="size-4" />
+      {!compact && label}
+    </button>
+  )
+}
+
+const verifyKey = "saluyu.verifyDismissed"
+
+// VerifyBanner stays until the email is verified (invites to it are hidden until then),
+// or until closed on this device.
 function VerifyBanner({ email }: { email: string }) {
   const t = useT()
   const [state, setState] = useState<"" | "busy" | "sent" | "failed">("")
+  const [closed, setClosed] = useState(() => {
+    try {
+      return localStorage.getItem(verifyKey) === email
+    } catch {
+      return false
+    }
+  })
+  if (closed) return null
+  const close = () => {
+    try {
+      localStorage.setItem(verifyKey, email)
+    } catch {
+      /* private mode: closed for this page only */
+    }
+    setClosed(true)
+  }
   async function resend() {
     setState("busy")
     setState(await resendVerification().then(() => "sent" as const, () => "failed" as const))
@@ -213,8 +248,16 @@ function VerifyBanner({ email }: { email: string }) {
         </button>
       )}
       </div>
+      <button type="button" onClick={close} aria-label={t("f12.dismiss")} title={t("f12.dismiss")} className="-my-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-sm hover:bg-amber-100 lg:size-8">
+        <X className="size-4" />
+      </button>
     </div>
   )
+}
+
+// Soon stands in for a card that has no data yet: one line saying when it will appear.
+export function Soon({ children }: { children: ComponentChildren }) {
+  return <p className="rounded-sm border bg-card px-4 py-3 text-sm text-muted-foreground">{children}</p>
 }
 
 // Table wrapper: horizontal scroll on small screens instead of a squashed layout.
