@@ -220,7 +220,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   )
 }
 
-const systemCodes = ["5108", "5199"] // Bunga & Denda, Beban Tunai Lain-lain
+const systemCodes = ["5108", "5111", "5112", "5199"] // Denda & Bunga Lain, Bunga Pinjaman, Bunga & Denda Kartu, Beban Tunai Lain-lain
 
 // QuickAdd is the always-there way to record: a floating button on phones, a sidebar button on desktop.
 export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {
