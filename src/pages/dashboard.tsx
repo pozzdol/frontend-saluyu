@@ -7,7 +7,7 @@ import { getDashboard, useEntriesVersion, type BudgetRow, type Dashboard } from 
 import { cn, fmtIDR, fmtPercent } from "@/lib/utils"
 import { Term } from "@/components/term"
 import { useT, type Key } from "@/lib/i18n"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, Flame } from "lucide-react"
 import type { ComponentChildren } from "preact"
 import { DueBills } from "@/pages/cards"
 import { useCount, useTween } from "@/lib/motion"
@@ -108,6 +108,11 @@ export function DashboardPage() {
         <DueList />
         {d && d.income === 0 && d.expense === 0 && d.budgets.every((r) => r.budget === 0) && <FirstSteps />}
         <InsightsTop date={date} />
+        {d && d.streak_days > 0 && (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Flame className="size-4 text-amber-500" /> {t("notify.streak", { n: d.streak_days })}
+          </p>
+        )}
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">

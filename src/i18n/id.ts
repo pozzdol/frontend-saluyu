@@ -1152,6 +1152,22 @@ export const id = {
     ctaTitle: "Mulai tahu ke mana uangmu pergi.",
     ctaSub: "Siapkan dalam beberapa menit, catat dalam beberapa detik.",
   },
+  // Fase 13
+  notify: {
+    title: "Pengingat email",
+    hint: "Pengingat dikirim ke email akunmu.",
+    unverified: "Email belum diverifikasi, jadi pengingat belum dikirim. Verifikasi dulu lewat email dari Saluyu.",
+    dueBills: "Tagihan jatuh tempo",
+    dueBillsHint: "Transaksi berulang, cicilan, dan kartu: 3 hari sebelum dan di hari jatuh tempo.",
+    budget: "Anggaran hampir habis",
+    budgetHint: "Saat sebuah kategori mencapai 80% dan 100% anggaran.",
+    weekly: "Ringkasan mingguan",
+    weeklyHint: "Tiap Senin: pengeluaran 7 hari, sisa aman per hari, kategori terbesar.",
+    inactive: "Lupa mencatat",
+    inactiveHint: "Bila 3 hari tidak ada transaksi.",
+    saved: "Pengaturan pengingat disimpan",
+    streak: "{n} hari berturut-turut mencatat",
+  },
 }
 
 export type Dict = typeof id

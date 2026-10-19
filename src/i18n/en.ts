@@ -1152,4 +1152,21 @@ export const en: Dict = {
     },
     ctaTitle: "Start knowing where your money goes.",
     ctaSub: "Set up in minutes, record in seconds.",
-  },}
+  },
+  // Fase 13
+  notify: {
+    title: "Email reminders",
+    hint: "Reminders go to your account email.",
+    unverified: "Your email is not verified, so reminders are not sent yet. Verify it with the email from Saluyu.",
+    dueBills: "Bills coming due",
+    dueBillsHint: "Recurring items, installments and cards: 3 days before and on the due day.",
+    budget: "Budget running out",
+    budgetHint: "When a category reaches 80% and 100% of its budget.",
+    weekly: "Weekly summary",
+    weeklyHint: "Every Monday: 7-day spending, safe to spend per day, top categories.",
+    inactive: "Forgot to record",
+    inactiveHint: "When 3 days pass without an entry.",
+    saved: "Reminder settings saved",
+    streak: "{n} days in a row recording",
+  },
+}

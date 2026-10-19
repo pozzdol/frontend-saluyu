@@ -12,6 +12,7 @@ import { toast } from "@/components/toast"
 import { DayOfMonthPicker, SelectPicker } from "@/components/picker"
 import { useT } from "@/lib/i18n"
 import { Sessions, TwoFactor } from "@/components/security"
+import { Reminders } from "@/components/reminders"
 
 const initials = (name: string) =>
   name
@@ -152,6 +153,7 @@ export function Account({ user }: { user: User }) {
               </Button>
             </form>
             <div className="mt-6 border-t pt-6"><LanguageField user={user} /></div>
+            <div className="mt-6 border-t pt-6"><Reminders user={user} /></div>
           </CardContent>
         </Card>
 

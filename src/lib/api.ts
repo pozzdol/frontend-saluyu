@@ -409,6 +409,7 @@ export type Dashboard = {
   to_savings_total: number
   budgets: BudgetRow[]
   balances: BalanceRow[]
+  streak_days: number // consecutive days with an entry, ending today or yesterday
 }
 
 export type BudgetList = { period: Period; rows: BudgetRow[] }
@@ -852,3 +853,7 @@ export const acceptInviteLink = (token: string) =>
 
 // whatsapp opens WhatsApp with a ready message; the person picks who gets it there.
 export const whatsapp = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`
+
+export type NotifyPrefs = { due_bills: boolean; budget: boolean; weekly: boolean; inactive: boolean }
+export const getNotifyPrefs = () => authed<{ data: NotifyPrefs }>("/me/notifications").then((r) => r.data)
+export const putNotifyPrefs = (body: NotifyPrefs) => authed<{ data: NotifyPrefs }>("/me/notifications", json("PUT", body)).then((r) => r.data)
