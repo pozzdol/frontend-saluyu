@@ -8,12 +8,34 @@ export function cn(...inputs: ClassValue[]) {
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const idrSen = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// "Hide amounts" (the eye in the menu) masks every formatted amount on this device.
+const hideKey = "saluyu.hideAmounts"
+export const amountsHidden = (() => {
+  try {
+    return localStorage.getItem(hideKey) === "1"
+  } catch {
+    return false // private mode, or node running the tests
+  }
+})()
+const masked = "Rp ••••••"
+
+// setAmountsHidden remembers the choice and reloads, so every number on screen is redrawn.
+// ponytail: a reload instead of a store that every page subscribes to; it is a rare toggle.
+export function setAmountsHidden(hide: boolean) {
+  try {
+    localStorage.setItem(hideKey, hide ? "1" : "0")
+  } catch {
+    /* private mode: nothing to remember it in */
+  }
+  location.reload()
+}
+
 // Money travels as integer sen (1/100 rupiah) so cents never pick up float error. Whole rupiah
 // show no decimals; anything else shows both digits ("Rp 576.593,10", never "Rp 576.593,1").
-export const fmtIDR = (sen: number) => (Number.isInteger(sen / 100) ? idr : idrSen).format(sen / 100)
+export const fmtIDR = (sen: number) => (amountsHidden ? masked : (Number.isInteger(sen / 100) ? idr : idrSen).format(sen / 100))
 
 // fmtRupiah rounds down to whole rupiah, for estimates where sen are noise (safe to spend per day).
-export const fmtRupiah = (sen: number) => idr.format(Math.floor(sen / 100))
+export const fmtRupiah = (sen: number) => (amountsHidden ? masked : idr.format(Math.floor(sen / 100)))
 
 // fmtPercent writes a ratio (0.995) the local way: "99,5%" in Indonesian, "99.5%" in English.
 export const fmtPercent = (ratio: number, digits = 1) =>
@@ -33,4 +55,26 @@ export function toSen(input: string): number {
 export function todayISO() {
   const d = new Date()
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+}
+
+// nextPeriodStart is the first day of the period after the one containing iso (YYYY-MM-DD),
+// the same cut as the server's period.For.
+export function nextPeriodStart(iso: string, u: { period_mode: string; period_start_day: number; period_weekday: number }) {
+  const [y, m, d] = iso.split("-").map(Number)
+  const out = (t: Date) => t.toISOString().slice(0, 10)
+  if (u.period_mode === "weekly") {
+    const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+    return out(new Date(Date.UTC(y, m - 1, d + ((u.period_weekday - wd + 7) % 7 || 7))))
+  }
+  // Day n of month mo (1-based, may be 13), clamped to the month's last day.
+  const clamp = (mo: number, n: number) => new Date(Date.UTC(y, mo - 1, Math.min(n, new Date(Date.UTC(y, mo, 0)).getUTCDate())))
+  const startIn = (mo: number) => {
+    if (u.period_mode === "calendar_month") return clamp(mo, 1)
+    if (u.period_mode !== "last_workday") return clamp(mo, u.period_start_day)
+    const t = clamp(mo, 31)
+    while (t.getUTCDay() === 0 || t.getUTCDay() === 6) t.setUTCDate(t.getUTCDate() - 1)
+    return t
+  }
+  const s = startIn(m)
+  return out(d < s.getUTCDate() ? s : startIn(m + 1))
 }

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "preact/hooks"
-import { AppShell, TableCard } from "@/components/app-shell"
+import { AppShell, Soon, TableCard } from "@/components/app-shell"
 import { Status, toFormError, type FormError } from "@/components/field"
 import { PeriodPicker, usePeriodDate } from "@/components/period-picker"
 import { Card, CardContent } from "@/components/ui/card"
 import { getDashboard, useEntriesVersion, type BudgetRow, type Dashboard } from "@/lib/api"
-import { cn, fmtIDR, fmtPercent } from "@/lib/utils"
+import { cn, fmtIDR, fmtPercent, todayISO } from "@/lib/utils"
+import { fmtDate } from "@/components/picker"
+import { IndonesianNames } from "@/pages/accounts"
 import { Term } from "@/components/term"
 import { useT, type Key } from "@/lib/i18n"
 import { ChevronRight, Flame } from "lucide-react"
@@ -109,6 +111,15 @@ export function DashboardPage() {
     <AppShell title={t("dash.title")} actions={<PeriodPicker period={d?.period} onChange={setDate} />}>
       <div className="grid gap-6">
         <Status err={err} ok="" />
+        {d && (
+          // "Total uangku" first: the one number everyone looks for.
+          <section className="rounded-sm border bg-card px-4 py-3">
+            <p className="text-sm text-muted-foreground">{t("f12.totalMoney")}</p>
+            <p className="text-3xl font-bold tracking-tight tabular-nums">{fmtIDR(d.cash_total)}</p>
+            <p className="text-xs text-muted-foreground">{t("f12.totalMoneyHint", { date: fmtDate(d.period.end < todayISO() ? d.period.end : todayISO()) })}</p>
+          </section>
+        )}
+        <IndonesianNames />
         <DueBills />
         <DueList />
         {d && d.income === 0 && d.expense === 0 && d.budgets.every((r) => r.budget === 0) && <FirstSteps />}
@@ -123,11 +134,17 @@ export function DashboardPage() {
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
               <Tile label={<Term k="revenue">{t("dash.income")}</Term>} value={d.income} tone="text-emerald-700" />
               <Tile label={<Term k="expense">{t("dash.expense")}</Term>} value={d.expense} tone="text-rose-700" />
-              <Tile label={<Term k="surplus">{t("dash.surplus")}</Term>} value={d.surplus} tone={d.surplus < 0 ? "text-rose-700" : undefined} note={d.surplus < 0 ? t("dash.deficit") : undefined} />
+              {/* Left of the period's money (its opening cash + income): a deficit only past that. */}
+              <Tile label={<Term k="surplus">{t("f12.left")}</Term>} value={d.period_money - d.expense} tone={d.period_money < d.expense ? "text-rose-700" : undefined}
+                note={d.period_money < d.expense ? t("dash.deficit") : t("f12.leftNote", { money: fmtIDR(d.period_money), opening: fmtIDR(d.opening_cash), income: fmtIDR(d.income) })} />
               <Tile label={<Term k="savingsRate">{t("dash.savingsRate")}</Term>} value={d.savings_rate} format={(n) => fmtPercent(n)} step={0} note={t("dash.movedToSavings", { amount: fmtIDR(d.to_savings_total) })} />
             </div>
 
             <div className="grid items-start gap-6 md:grid-cols-2">
+              {/* An empty card says nothing: until there is data it is one line saying when it comes. */}
+              {d.to_savings.length === 0 ? (
+                <Soon>{t("f12.soonSavings")}</Soon>
+              ) : (
               <section aria-labelledby="sav-title" className="grid content-start gap-3">
                 <h2 id="sav-title" className="text-lg font-semibold">{t("dash.toSavings")}</h2>
                 <TableCard>
@@ -138,12 +155,10 @@ export function DashboardPage() {
                         <td className="text-right">{fmtIDR(r.amount)}</td>
                       </tr>
                     ))}
-                    {d.to_savings.length === 0 && (
-                      <tr><td className="py-8! text-center text-muted-foreground">{t("dash.noSavings")}</td></tr>
-                    )}
                   </tbody>
                 </TableCard>
               </section>
+              )}
 
               <section aria-labelledby="bal-title" className="grid content-start gap-3">
                 <h2 id="bal-title" className="text-lg font-semibold"><Term k="asset">{t("dash.assetBalances")}</Term></h2>
@@ -152,7 +167,7 @@ export function DashboardPage() {
                     {/* Zero balances are noise here; Trial balance lists every account. */}
                     {d.balances.filter((r) => r.balance !== 0).map((r) => (
                       <tr key={r.account_id}>
-                        <td>{r.name} <span className="text-xs text-muted-foreground">{r.category}</span></td>
+                        <td>{r.name}</td>
                         <td className="text-right">{fmtIDR(r.balance)}</td>
                       </tr>
                     ))}
@@ -161,6 +176,9 @@ export function DashboardPage() {
               </section>
             </div>
 
+            {d.budgets.every((r) => r.budget === 0) ? (
+              <Soon>{t("f12.soonBudgets")} <a href={`/app/budgets?date=${date}`} className="text-primary hover:underline">{t("dash.setBudgets")}</a></Soon>
+            ) : (
             <section aria-labelledby="bud-title" className="grid gap-3">
               <div className="flex items-end justify-between">
                 <h2 id="bud-title" className="text-lg font-semibold"><Term k="budget">{t("dash.budgets")}</Term></h2>
@@ -172,12 +190,10 @@ export function DashboardPage() {
                   <ul className="grid gap-4">
                     {d.budgets.filter((r) => r.budget > 0).map((r) => <BudgetBar key={r.account_id} row={r} />)}
                   </ul>
-                  {d.budgets.every((r) => r.budget === 0) && (
-                    <p className="text-sm text-muted-foreground">{t("budget.none")}</p>
-                  )}
                 </CardContent>
               </Card>
             </section>
+            )}
           </>
         )}
         <Goals />

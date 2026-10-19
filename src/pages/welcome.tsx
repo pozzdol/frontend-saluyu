@@ -2,10 +2,9 @@ import { ArrowLeft, Check, Loader2 } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AmountField, Status, toFormError, type FormError } from "@/components/field"
-import { DayOfMonthPicker } from "@/components/picker"
+import { PeriodFields, type PeriodSettings } from "@/components/period-picker"
 import { Logo } from "@/components/site"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { createAccount, listAccounts, putBudget, setOpening, updateAccount, updateProfile, type Account, type User } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
@@ -29,7 +28,7 @@ type Provider = (typeof providers)[number]
 const budgetCodes = ["5102", "5101", "5103"] // Makan, Transportasi, Jajan
 
 // placeAccounts turns the chosen providers into accounts: the first bank takes over 1001 "Bank",
-// the first e-wallet 1004 "E-wallet", the rest become new accounts. An account that already has
+// the first e-wallet 1004 "Dompet Digital", the rest become new accounts. An account that already has
 // the name is reused, so finishing again after an error never makes duplicates.
 async function placeAccounts(chosen: Provider[], accounts: Account[]) {
   const ids = new Map<string, string>()
@@ -61,7 +60,8 @@ export function WelcomePage({ user }: { user: User }) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [chosen, setChosen] = useState<string[]>([])
   const [amounts, setAmounts] = useState<Record<string, string>>({})
-  const [payday, setPayday] = useState(user.period_start_day)
+  const [period, setPeriod] = useState<PeriodSettings>(user)
+  const [unused, setUnused] = useState<string[]>([]) // expense categories the user unticked
   const [budgets, setBudgets] = useState<Record<string, string>>({})
   const [err, setErr] = useState<FormError>({})
   const [busy, setBusy] = useState(false)
@@ -77,7 +77,9 @@ export function WelcomePage({ user }: { user: User }) {
   const sen = (s?: string) => (s?.trim() ? toSen(s) : 0)
   const bad = Object.entries(amounts).filter(([, v]) => !(sen(v) >= 0)).map(([k]) => k)
   const total = wallets.reduce((s, w) => s + (sen(amounts[w]) || 0), 0)
-  const budgetAccounts = budgetCodes.map((c) => accounts.find((a) => a.code === c)).filter((a): a is Account => !!a)
+  // System categories (5108, 5199) are hidden from Quick Add until used, so they are not offered.
+  const categories = accounts.filter((a) => a.type === "Expense" && a.is_active && !["5108", "5199"].includes(a.code))
+  const budgetAccounts = budgetCodes.map((c) => accounts.find((a) => a.code === c)).filter((a): a is Account => !!a && !unused.includes(a.id))
 
   async function finish(skipBudgets = false) {
     setBusy(true)
@@ -87,7 +89,10 @@ export function WelcomePage({ user }: { user: User }) {
       if (cash) ids.set("cash", cash.id)
       const today = todayISO()
       const items = wallets.map((w) => ({ account_id: ids.get(w)!, amount: sen(amounts[w]) })).filter((i) => i.amount > 0)
-      if (payday !== user.period_start_day) await updateProfile({ period_start_day: payday })
+      const changed = (Object.keys(period) as (keyof PeriodSettings)[]).filter((k) => period[k] !== user[k])
+      if (changed.length > 0) await updateProfile(Object.fromEntries(changed.map((k) => [k, period[k]])))
+      // Unticked categories are archived: out of Quick Add and forms, back on from Accounts.
+      for (const id of unused) await updateAccount(id, { is_active: false })
       await setOpening({ start_date: today, items })
       for (const a of skipBudgets ? [] : budgetAccounts) {
         const amount = sen(budgets[a.id])
@@ -162,14 +167,30 @@ export function WelcomePage({ user }: { user: User }) {
 
           {step === 2 && (
             <div className="grid gap-2">
-              <Label htmlFor="payday">{t("prof.payday")}</Label>
-              <DayOfMonthPicker id="payday" value={payday} onChange={setPayday} />
+              <PeriodFields value={period} onChange={setPeriod} />
               <p className="text-sm text-muted-foreground">{t("wel.s3Hint")}</p>
             </div>
           )}
 
           {step === 3 && (
             <div className="grid gap-4">
+              <fieldset className="grid gap-2">
+                <legend className="text-sm font-medium">{t("f12.categories")}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((a) => {
+                    const on = !unused.includes(a.id)
+                    return (
+                      <button key={a.id} type="button" aria-pressed={on}
+                        onClick={() => setUnused((u) => (on ? [...u, a.id] : u.filter((x) => x !== a.id)))}
+                        className={cn("flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm md:min-h-9", on ? "border-primary bg-[#eaf2ff] text-primary" : "text-muted-foreground hover:bg-muted")}>
+                        {on && <Check className="size-4" />}
+                        {a.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">{t("f12.categoriesHint")}</p>
+              </fieldset>
               <p className="text-sm text-muted-foreground">{t("wel.s4Hint")}</p>
               {budgetAccounts.map((a) => (
                 <AmountField key={a.id} name={`budget-${a.code}`} label={t("wel.budgetFor", { name: a.name })} placeholder={t("common.optional")}

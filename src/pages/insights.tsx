@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { getHealth, getInsights, getTrends, useEntriesVersion, type Health, type Insight, type Insights, type Ratio, type TrendPoint } from "@/lib/api"
 import { intlLocale, useT, type Key } from "@/lib/i18n"
 import { cn, fmtIDR, fmtRupiah } from "@/lib/utils"
+import { Soon } from "@/components/app-shell"
 
 function insightText(t: ReturnType<typeof useT>, i: Insight) {
   const vars = { name: i.name ?? "", amount: fmtIDR(i.amount), percent: Math.abs(i.percent).toLocaleString(), points: Math.abs(i.percent).toLocaleString() }
@@ -38,7 +39,9 @@ export function InsightsTop({ date }: { date: string }) {
             <p className="text-3xl font-bold tracking-tight tabular-nums">{fmtRupiah(safe.amount)}</p>
             <p className="text-xs text-white/85">
               {safe.days_left > 0
-                ? t(safe.basis === "budget" ? "ins.safeBudget" : "ins.safeSurplus", { remaining: fmtIDR(safe.remaining), days: safe.days_left, date: fmtDate(d.period.end) })
+                ? safe.basis === "budget"
+                  ? t("ins.safeBudget", { remaining: fmtIDR(safe.remaining), days: safe.days_left, date: fmtDate(d.period.end) })
+                  : t("f12.safeCash", { cash: fmtIDR(safe.cash), bills: fmtIDR(safe.scheduled), remaining: fmtIDR(safe.remaining), days: safe.days_left, date: fmtDate(d.period.end) })
                 : t("ins.periodOver")}
             </p>
           </CardContent>
@@ -122,7 +125,8 @@ export function TrendsAndHealth({ date }: { date: string }) {
     : []
   return (
     <>
-      {health && (
+      {health && health.periods === 0 && <Soon>{t("f12.soonHealth")}</Soon>}
+      {health && health.periods > 0 && (
         <section className="grid gap-3">
           <h2 className="text-lg font-semibold">{t("health.title")}</h2>
           <div className="grid gap-4 md:grid-cols-3">
@@ -139,9 +143,7 @@ export function TrendsAndHealth({ date }: { date: string }) {
           {health.periods < 3 && <p className="text-xs text-muted-foreground">{t("health.young", { n: health.periods })}</p>}
         </section>
       )}
-      {trend && trend.length > 0 && trend.filter((p) => p.income || p.expense).length < 2 && (
-        <p className="rounded-sm border bg-card px-4 py-3 text-sm text-muted-foreground">{t("ins.trendSoon")}</p>
-      )}
+      {trend && trend.length > 0 && trend.filter((p) => p.income || p.expense).length < 2 && <Soon>{t("ins.trendSoon")}</Soon>}
       {trend && trend.filter((p) => p.income || p.expense).length >= 2 && (
         <div className="grid gap-6 md:grid-cols-2">
           <Card className="rounded-sm"><CardContent>

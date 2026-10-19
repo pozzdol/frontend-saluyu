@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ApiError, changePassword, logout, updateProfile, type User } from "@/lib/api"
 import { toast } from "@/components/toast"
-import { DayOfMonthPicker, SelectPicker } from "@/components/picker"
+import { SelectPicker } from "@/components/picker"
+import { PeriodFields, type PeriodSettings } from "@/components/period-picker"
 import { useT } from "@/lib/i18n"
 import { Sessions, TwoFactor } from "@/components/security"
 import { Reminders } from "@/components/reminders"
@@ -22,15 +23,12 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase()
 
-// PaydayField picks the day each budget period starts; the hidden input feeds the profile form.
-function PaydayField({ day, error }: { day: number; error?: string }) {
-  const t = useT()
-  const [value, setValue] = useState(day)
+// PaydayField picks how budget periods are cut; its hidden inputs feed the profile form.
+function PaydayField({ user, error }: { user: User; error?: string }) {
+  const [value, setValue] = useState<PeriodSettings>(user)
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor="period_start_day">{t("prof.payday")}</Label>
-      <DayOfMonthPicker id="period_start_day" value={value} onChange={setValue} />
-      <input type="hidden" name="period_start_day" value={String(value)} />
+      <PeriodFields name value={value} onChange={setValue} />
       {error && <p className="text-xs text-destructive">{error[0].toUpperCase() + error.slice(1)}</p>}
     </div>
   )
@@ -64,10 +62,12 @@ export function Account({ user }: { user: User }) {
   const t = useT()
   const profile = useForm(async (v) => {
     // Send only changed fields: the API treats a missing field as "leave as is".
-    const body: { name?: string; img_url?: string; period_start_day?: number } = {}
+    const body: Parameters<typeof updateProfile>[0] = {}
     if (v.name !== user.name) body.name = v.name
     if (v.img_url !== user.img_url) body.img_url = v.img_url
     if (Number(v.period_start_day) !== user.period_start_day) body.period_start_day = Number(v.period_start_day)
+    if (v.period_mode !== user.period_mode) body.period_mode = v.period_mode as PeriodSettings["period_mode"]
+    if (Number(v.period_weekday) !== user.period_weekday) body.period_weekday = Number(v.period_weekday)
     // Feedback as a toast: "nothing changed" is information, not a green success box.
     if (Object.keys(body).length === 0) return toast(t("common.nothingToUpdate")), ""
     await updateProfile(body)
@@ -142,9 +142,9 @@ export function Account({ user }: { user: User }) {
                 defaultValue={user.img_url}
                 error={profile.err.fields?.img_url}
               />
-              <PaydayField day={user.period_start_day} error={profile.err.fields?.period_start_day} />
+              <PaydayField user={user} error={profile.err.fields?.period_start_day ?? profile.err.fields?.period_mode ?? profile.err.fields?.period_weekday} />
               <p className="-mt-2 text-xs text-muted-foreground">
-                {t("prof.paydayHint")}
+                {t("f12.periodHint")}
               </p>
               <Field name="email" label={t("prof.emailFixed")} defaultValue={user.email} type="email" disabled />
               <Button type="submit" disabled={profile.busy} className="h-10 rounded-sm">

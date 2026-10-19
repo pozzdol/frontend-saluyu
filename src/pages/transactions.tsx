@@ -27,7 +27,7 @@ import {
   useEntriesVersion,
   useHiddenEntries,
 } from "@/lib/api"
-import { cn, fmtIDR, toSen, todayISO } from "@/lib/utils"
+import { cn, fmtIDR, nextPeriodStart, toSen, todayISO } from "@/lib/utils"
 import { Term } from "@/components/term"
 import { t, useT, type Key } from "@/lib/i18n"
 import { EntryDetailSheet } from "@/components/entry-detail"
@@ -63,7 +63,7 @@ export const kindBadge: Record<string, string> = {
 // The same short words as Quick Add, so both ways of recording speak alike (and fit a phone).
 const tabLabel: Record<FormKind, Key> = { expense: "qa.out", income: "qa.in", transfer: "qa.move" }
 
-function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; startDay: number; onPosted: () => void }) {
+function EntryForm({ accounts, user, onPosted }: { accounts: Account[]; user: User; onPosted: () => void }) {
   const t = useT()
   const [kind, setKind] = useState<FormKind>("expense")
   const rule = kinds[kind]
@@ -78,11 +78,7 @@ function EntryForm({ accounts, startDay, onPosted }: { accounts: Account[]; star
   const [nextPeriod, setNextPeriod] = useState(false)
 
   // Salary often lands a few days before the period starts; offer to count it in the coming one.
-  const nextStart = (() => {
-    const [y, m, d] = date.split("-").map(Number)
-    if (!y) return ""
-    return new Date(Date.UTC(y, d < startDay ? m - 1 : m, startDay)).toISOString().slice(0, 10)
-  })()
+  const nextStart = date ? nextPeriodStart(date, user) : ""
   const early = nextStart !== "" && daysBetween(date, nextStart) <= 3
   const showNext = kind === "income" && early
 
@@ -270,7 +266,7 @@ export function Transactions({ user }: { user: User }) {
   return (
     <AppShell title={t("tx.title")} term="journal">
       <div className="grid gap-6">
-        <EntryForm accounts={accounts} startDay={user.period_start_day} onPosted={() => setReload((n) => n + 1)} />
+        <EntryForm accounts={accounts} user={user} onPosted={() => setReload((n) => n + 1)} />
         <Status err={loadErr} ok="" />
 
         <section aria-labelledby="journal-title" className="grid gap-3">
@@ -300,7 +296,8 @@ export function Transactions({ user }: { user: User }) {
                       <Badge className={cn("rounded-sm", kindBadge[e.kind] ?? "bg-muted text-foreground")}>{t(`kind.${e.kind}`)}</Badge>
                       {e.period_date && <span className="text-primary">{t("tx.nextPeriodMark")}</span>}
                       <span className="w-full truncate">
-                        {e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")} → {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")}
+                        {/* The equity account behind opening balances shows only in the journal view. */}
+                        {e.kind === "opening" ? t("f12.opening") : e.lines.filter((l) => l.credit > 0).map((l) => l.name).join(", ")} → {e.lines.filter((l) => l.debit > 0).map((l) => l.name).join(", ")}
                       </span>
                       {showBalance && e.balance_after !== undefined && <span className="tabular-nums">{t("fase14.balance")} {fmtIDR(e.balance_after)}</span>}
                     </>
@@ -329,7 +326,7 @@ export function Transactions({ user }: { user: User }) {
               {entries?.map((e) => {
                 const who = (l: Entry["lines"][number]) => (l.contact_name ? `${l.name} (${l.contact_name})` : l.name)
                 const dr = e.lines.filter((l) => l.debit > 0).map(who).join(", ")
-                const cr = e.lines.filter((l) => l.credit > 0).map(who).join(", ")
+                const cr = e.kind === "opening" ? t("f12.opening") : e.lines.filter((l) => l.credit > 0).map(who).join(", ")
                 return (
                   <tr key={e.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setOpenId(e.id)}>
                     <td className="text-muted-foreground tabular-nums">{e.entry_no}</td>

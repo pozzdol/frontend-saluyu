@@ -8,11 +8,16 @@ export type User = {
   is_active: boolean
   start_date: string | null // null until the opening balance is set
   locale: "id" | "en" | null // null = follow the browser
-  period_start_day: number // 1..28, first day of the payday period
+  period_start_day: number // 1..31, payday; a month without that day uses its last day
+  period_mode: PeriodMode
+  period_weekday: number // weekly: first day of the week, 0 = Sunday
   email_verified: boolean // group invites show only after verifying
   totp_enabled: boolean
   locked_until: string | null // books are closed up to and including this day
 }
+
+// payday: from period_start_day; last_workday: the month's last Mon–Fri; calendar_month: the 1st; weekly: period_weekday.
+export type PeriodMode = "payday" | "last_workday" | "calendar_month" | "weekly"
 
 type Session = { access_token: string; user: User }
 
@@ -175,7 +180,7 @@ export async function logout() {
   }
 }
 
-export async function updateProfile(body: { name?: string; img_url?: string; period_start_day?: number; locale?: "id" | "en" | "auto" }) {
+export async function updateProfile(body: { name?: string; img_url?: string; period_start_day?: number; period_mode?: PeriodMode; period_weekday?: number; locale?: "id" | "en" | "auto" }) {
   const res = await authed<{ data: User }>("/me", json("PATCH", body))
   setUser(res.data)
 }
@@ -201,6 +206,7 @@ export type Account = {
   icon: string // "" = default for the type
   color: string
   uses_30d: number // entries in the last 30 days; Quick Add sorts categories by it
+  has_entries: boolean // used at least once; Quick Add hides system categories until then
   kind: "general" | "credit_card" | "paylater" | "loan"
   budget_carry: boolean // envelope: unspent budget rolls into the next period
   need_group: NeedGroup | null // 50/30/20 group
@@ -433,6 +439,9 @@ export type Dashboard = {
   budgets: BudgetRow[]
   balances: BalanceRow[]
   streak_days: number // consecutive days with an entry, ending today or yesterday
+  opening_cash: number // spendable cash at the period's start
+  period_money: number // opening_cash + income: a deficit is spending past this
+  cash_total: number // "Total uangku": cash, bank, e-wallet and savings now
 }
 
 export type GroupShare = { group: NeedGroup; amount: number; share: number; target: number } // share and target are 0..1
@@ -778,7 +787,10 @@ export const commitImport = (body: {
 export type Insight = { kind: "category_up" | "category_down" | "savings_up" | "savings_down"; account_id?: string; name?: string; amount: number; percent: number }
 export type Insights = {
   period: Period
-  safe_per_day: { amount: number; remaining: number; days_left: number; basis: "budget" | "surplus" }
+  safe_per_day: {
+    amount: number; remaining: number; days_left: number; basis: "budget" | "period_money"
+    cash: number; scheduled: number; opening_cash: number; period_money: number; deficit: boolean
+  }
   by_category: AmountRow[]
   expense_total: number
   daily: { date: string; income: number; expense: number }[]
