@@ -1,7 +1,7 @@
 {
   "name": "Saluyu",
   "short_name": "Saluyu",
-  "description": "Catatan keuangan pribadi dan keluarga.",
+  "description": "Catat uang harian, tahu berapa yang aman dibelanjakan. Uangmu jelas, tanpa pusing akuntansi.",
   "start_url": "/app/dashboard",
   "scope": "/",
   "display": "standalone",
