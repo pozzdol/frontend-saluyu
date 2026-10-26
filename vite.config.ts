@@ -11,5 +11,7 @@ export default defineConfig({
   server: {
     // Same origin for the browser: the SameSite=Strict refresh cookie works and Go needs no CORS.
     proxy: { '/api': 'http://localhost:12152' },
+    // Quick Cloudflare tunnels (cloudflared tunnel --url) get a random *.trycloudflare.com name.
+    allowedHosts: ['.trycloudflare.com'],
   },
 })

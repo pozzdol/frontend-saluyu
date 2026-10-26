@@ -44,7 +44,7 @@ export function LedgerPage({ id }: { id: string }) {
               <span className={cn("size-2.5 rounded-full", typeDot[a.type])} />
               {t(`type.${a.type}`)} · {a.category} · {t("acct.growsOn", { side: a.normal_balance === "Debit" ? "debit" : t("glossary.credit.label").toLowerCase() })}
               <Info k="normalBalance" />
-              {!a.is_active && <Badge className="rounded-sm bg-muted text-muted-foreground">{t("common.inactive")}</Badge>}
+              {!a.is_active && <Badge className="rounded-sm bg-muted text-muted-foreground">{t("acct.archived")}</Badge>}
             </p>
             <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
               <div className="grid gap-1">

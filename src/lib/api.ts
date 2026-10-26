@@ -207,7 +207,7 @@ export type Account = {
   color: string
   uses_30d: number // entries in the last 30 days; Quick Add sorts categories by it
   has_entries: boolean // used at least once; Quick Add hides system categories until then
-  kind: "general" | "credit_card" | "paylater" | "loan"
+  kind: "general" | "saving" | "credit_card" | "paylater" | "loan" // saving: counts as money put aside
   budget_carry: boolean // envelope: unspent budget rolls into the next period
   need_group: NeedGroup | null // 50/30/20 group
 }
@@ -288,10 +288,10 @@ function query(params: Record<string, string | number | undefined>) {
 
 export const listAccounts = () => authed<{ data: Account[] }>("/accounts").then((r) => r.data)
 
-export const createAccount = (body: { code: string; name: string; type: AccountType; category: string; icon?: string; color?: string }) =>
+export const createAccount = (body: { code: string; name: string; type: AccountType; category: string; saving?: boolean; icon?: string; color?: string }) =>
   authed<{ data: Account }>("/accounts", json("POST", body)).then((r) => r.data)
 
-export const updateAccount = (id: string, body: { name?: string; category?: string; is_active?: boolean; icon?: string; color?: string; budget_carry?: boolean; need_group?: NeedGroup | "none" }) =>
+export const updateAccount = (id: string, body: { name?: string; category?: string; saving?: boolean; is_active?: boolean; icon?: string; color?: string; budget_carry?: boolean; need_group?: NeedGroup | "none" }) =>
   authed<{ data: Account }>(`/accounts/${id}`, json("PATCH", body)).then((r) => r.data)
 
 export type PostEntryInput = {

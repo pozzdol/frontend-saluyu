@@ -1,9 +1,8 @@
-import { Loader2, Pencil, Plus, RefreshCw } from "lucide-react"
+import { Archive, ArchiveRestore, Loader2, Pencil, Plus, RefreshCw } from "lucide-react"
 import { toast } from "@/components/toast"
 import { Input } from "@/components/ui/input"
 import { useEffect, useState } from "preact/hooks"
 import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-shell"
-import { Switch } from "@/components/ui/switch"
 import { Field, SelectField, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -165,47 +164,81 @@ export function Accounts() {
   const [err, setErr] = useState<FormError>({})
   const [reload, setReload] = useState(0)
   const [adding, setAdding] = useState(false)
-  const [naming, setNaming] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [showArchive, setShowArchive] = useState(false)
+  // One layout at a time: rendering both the phone list and the table put two edit forms
+  // (two autofocused inputs) on the page, and typing could land in the hidden one.
+  const mobile = useIsMobile()
   const [values, setValues] = useState<Record<string, number>>({}) // fixed asset id -> value today
   const [revaluing, setRevaluing] = useState<Account | null>(null)
 
+  // Balances decide whether an account may be archived: one that still holds money may not.
+  // The far date counts entries dated ahead too, like the server's check.
+  const [balances, setBalances] = useState<Record<string, number>>({})
   useEffect(() => {
     listAccounts().then(setAccounts).catch((e) => setErr(toFormError(e)))
     getTrialBalance(todayISO()).then((tb) => setValues(Object.fromEntries(tb.rows.map((r) => [r.account_id, r.debit_balance - r.credit_balance])))).catch(() => {})
+    getTrialBalance("9999-12-31").then((tb) => setBalances(Object.fromEntries(tb.rows.map((r) => [r.account_id, r.debit_balance - r.credit_balance]))), () => {})
   }, [reload])
+  const held = (a: Account) => (a.type === "Asset" || a.type === "Liability" || a.type === "Equity" ? Math.abs(balances[a.id] ?? 0) : 0)
 
   const saved = (updated: Account) => setAccounts((list) => list?.map((x) => (x.id === updated.id ? { ...updated, uses_30d: x.uses_30d, has_entries: x.has_entries } : x)) ?? null)
 
-  async function toggle(a: Account) {
+  // Archive instead of delete: entries keep pointing at the account, it just leaves the pickers.
+  async function setArchived(a: Account, archived: boolean) {
     setErr({})
     try {
-      saved(await updateAccount(a.id, { is_active: !a.is_active }))
+      saved(await updateAccount(a.id, { is_active: !archived }))
+      if (archived) toast(t("acct.archivedToast", { name: a.name }), { action: { label: t("common.undo"), run: () => setArchived(a, false) } })
     } catch (e) {
       setErr(toFormError(e))
     }
   }
 
-  async function rename(a: Account, name: string) {
+  async function save(a: Account, name: string, category: string, saving?: boolean) {
     setErr({})
+    const body: { name?: string; category?: string; saving?: boolean } = {}
+    if (name.trim() && name.trim() !== a.name) body.name = name.trim()
+    if (category.trim() && category.trim() !== a.category) body.category = category.trim()
+    if (saving !== undefined && saving !== (a.kind === "saving")) body.saving = saving
     try {
-      if (name.trim() && name.trim() !== a.name) saved(await updateAccount(a.id, { name: name.trim() }))
-      setNaming(null)
+      if (Object.keys(body).length) saved(await updateAccount(a.id, body))
+      setEditing(null)
     } catch (e) {
       setErr(toFormError(e))
     }
   }
 
-  // Name, or the inline box that renames it.
-  const nameCell = (a: Account) => naming === a.id ? (
-    <form className="flex items-center gap-2" onSubmit={(e) => (e.preventDefault(), rename(a, ((e.currentTarget as HTMLFormElement).elements.namedItem("name") as HTMLInputElement).value))}>
-      <Input name="name" defaultValue={a.name} autoFocus aria-label={t("acct.renameOf", { name: a.name })} className="h-9 w-44 rounded-sm" />
-      <Button type="submit" size="sm" className="rounded-sm">{t("common.save")}</Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => setNaming(null)}>{t("common.cancel")}</Button>
+  // The edit form: name and group (category). The type stays: it decides which side grows.
+  const editForm = (a: Account) => (
+    <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => {
+      e.preventDefault()
+      const el = (e.currentTarget as HTMLFormElement).elements
+      const saving = el.namedItem("saving") as HTMLInputElement | null
+      save(a, (el.namedItem("name") as HTMLInputElement).value, (el.namedItem("category") as HTMLInputElement).value, saving ? saving.checked : undefined)
+    }}>
+      <label className="grid gap-1 text-xs text-muted-foreground">{t("acct.name")}
+        <Input name="name" defaultValue={a.name} autoFocus className="h-9 w-48 rounded-sm text-foreground" />
+      </label>
+      <label className="grid gap-1 text-xs text-muted-foreground">{t("acct.category")}
+        <Input name="category" defaultValue={a.category} className="h-9 w-40 rounded-sm text-foreground" />
+      </label>
+      {/* Plain assets only: cards and loans have their own kind. */}
+      {(a.kind === "general" || a.kind === "saving") && a.type === "Asset" && (
+        <label className="flex h-9 items-center gap-2 text-sm">
+          <input type="checkbox" name="saving" defaultChecked={a.kind === "saving"} className="size-4 accent-[#0052d9]" />
+          {t("acct.countsAsSaving")}
+        </label>
+      )}
+      <Button type="submit" size="sm" className="h-9 rounded-sm">{t("common.save")}</Button>
+      <Button type="button" variant="ghost" size="sm" className="h-9" onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
     </form>
-  ) : (
+  )
+
+  const nameCell = (a: Account) => (
     <span className="flex items-center gap-1">
       <a href={`/app/accounts/${a.id}`} className="font-medium text-primary hover:underline">{a.name}</a>
-      <Button variant="ghost" size="icon-sm" aria-label={t("acct.renameOf", { name: a.name })} title={t("acct.renameOf", { name: a.name })} onClick={() => setNaming(a.id)}><Pencil /></Button>
+      <Button variant="ghost" size="icon-sm" aria-label={t("acct.editOf", { name: a.name })} title={t("acct.editOf", { name: a.name })} onClick={() => setEditing(a.id)}><Pencil /></Button>
     </span>
   )
 
@@ -217,15 +250,41 @@ export function Accounts() {
     </span>
   )
 
+  const archived = accounts?.filter((a) => !a.is_active) ?? []
+  const active = accounts?.filter((a) => a.is_active) ?? []
+
   // Fixed assets get their own group under Asset: they are owned, not spendable.
   const groups = typeOrder.flatMap((type): { type: AccountType; fixed: boolean; rows: Account[] }[] => type === "Asset"
-    ? [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type && !isFixedAsset(a)) ?? [] },
-       { type, fixed: true, rows: accounts?.filter(isFixedAsset) ?? [] }]
-    : [{ type, fixed: false, rows: accounts?.filter((a) => a.type === type) ?? [] }])
+    ? [{ type, fixed: false, rows: active.filter((a) => a.type === type && !isFixedAsset(a)) },
+       { type, fixed: true, rows: active.filter(isFixedAsset) }]
+    : [{ type, fixed: false, rows: active.filter((a) => a.type === type) }])
+
+  const archiveButton = (a: Account) => a.is_active ? (
+    held(a) !== 0 ? (
+      // Still holds money: the button stays visible and says why it cannot archive.
+      <Button variant="ghost" size="sm" aria-disabled="true" title={t("acct.cantArchive", { amount: fmtIDR(held(a)) })}
+        className="text-muted-foreground opacity-60" onClick={() => toast(t("acct.cantArchive", { amount: fmtIDR(held(a)) }), { tone: "error" })}>
+        <Archive /> {t("acct.archive")}
+      </Button>
+    ) : (
+      <Button variant="ghost" size="sm" onClick={() => setArchived(a, true)}><Archive /> {t("acct.archive")}</Button>
+    )
+  ) : (
+    <Button variant="ghost" size="sm" className="text-primary" onClick={() => setArchived(a, false)}><ArchiveRestore /> {t("acct.restore")}</Button>
+  )
 
   return (
     <AppShell title={t("acct.title")} term="code"
-      actions={!adding && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding(true)}><Plus /> {t("acct.add")}</Button>}>
+      actions={
+        <div className="flex flex-wrap gap-2">
+          {archived.length > 0 && (
+            <Button variant="ghost" size="sm" className="rounded-sm" onClick={() => setShowArchive(true)}>
+              <Archive /> {t("acct.archiveList", { n: archived.length })}
+            </Button>
+          )}
+          {!adding && <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setAdding(true)}><Plus /> {t("acct.add")}</Button>}
+        </div>
+      }>
       <div className="grid gap-6">
         {adding && <NewAccount accounts={accounts ?? []} onCreated={() => (setReload((n) => n + 1), setAdding(false))} onCancel={() => setAdding(false)} />}
         <Status err={err} ok="" />
@@ -249,29 +308,40 @@ export function Accounts() {
                   <Info k="normalBalance" />
                 </span>
               </h2>
+              {mobile ? (
               <MobileList>
-                {rows.map((a) => (
+                {rows.map((a) => editing === a.id ? (
+                  <li key={a.id} className="px-4 py-3">{editForm(a)}</li>
+                ) : (
                   <MobileItem
                     key={a.id}
                     lead={<IconButton account={a} onSaved={saved} />}
                     title={nameCell(a)}
-                    meta={<><span className="tabular-nums">{a.code}</span><span>{a.category}</span>{valueCell(a)}{!a.is_active && <span>{t("common.inactive")}</span>}</>}
-                    value={<Switch checked={a.is_active} onCheckedChange={() => toggle(a)} aria-label={t("acct.activeToggle", { name: a.name })} />}
+                    meta={<><span className="tabular-nums">{a.code}</span><span>{a.category}</span>{valueCell(a)}</>}
+                    actions={archiveButton(a)}
                   />
                 ))}
               </MobileList>
-              <TableCard className="hidden md:block">
+              ) : (
+              <TableCard className="[&_table]:table-fixed">
+                {/* Fixed layout and the same column widths in every section: Code, Name and Group
+                    line up from one table to the next instead of sizing to each table's content. */}
                 <thead>
                   <tr>
                     <th className="w-24">{t("acct.code")}</th>
                     <th>{t("acct.name")}</th>
-                    <th>{t("acct.category")}</th>
-                    <th className="w-36">{t("acct.status")}</th>
+                    <th className="w-56">{t("acct.category")}</th>
+                    <th className="w-36"><span className="sr-only">{t("tx.actions")}</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((a) => (
-                    <tr key={a.id} className={cn(!a.is_active && "text-muted-foreground")}>
+                  {rows.map((a) => editing === a.id ? (
+                    <tr key={a.id}>
+                      <td className="tabular-nums">{a.code}</td>
+                      <td colSpan={3}>{editForm(a)}</td>
+                    </tr>
+                  ) : (
+                    <tr key={a.id}>
                       <td className="tabular-nums">{a.code}</td>
                       <td>
                         <span className="flex items-center gap-3">
@@ -280,20 +350,48 @@ export function Accounts() {
                         </span>
                       </td>
                       <td>{a.category}{fixed && <span className="ml-3">{valueCell(a)}</span>}</td>
-                      <td>
-                        <label className="flex items-center gap-2 text-sm">
-                          <Switch checked={a.is_active} onCheckedChange={() => toggle(a)} aria-label={t("acct.activeToggle", { name: a.name })} />
-                          {a.is_active ? t("common.active") : t("common.inactive")}
-                        </label>
-                      </td>
+                      <td className="text-right">{archiveButton(a)}</td>
                     </tr>
                   ))}
                 </tbody>
               </TableCard>
+              )}
             </section>
           )
         })}
       </div>
+
+      <Sheet open={showArchive && archived.length > 0} onOpenChange={setShowArchive}>
+        <SheetContent side={mobile ? "bottom" : "right"} title={t("acct.archiveTitle")} description={t("acct.archiveHint")}>
+          <ul className="grid gap-4 pb-2">
+            {typeOrder.map((type) => {
+              const list = archived.filter((a) => a.type === type)
+              if (list.length === 0) return null
+              return (
+                <li key={type} className="grid gap-1">
+                  <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <span className={cn("size-2 rounded-full", typeDot[type])} /> {t(`type.${type}`)}
+                  </p>
+                  <ul className="divide-y rounded-sm border">
+                    {list.map((a) => (
+                      <li key={a.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <span className="w-12 text-muted-foreground tabular-nums">{a.code}</span>
+                        <span className="min-w-0 flex-1">
+                          <a href={`/app/accounts/${a.id}`} className="block truncate font-medium hover:underline">{a.name}</a>
+                          <span className="block truncate text-xs text-muted-foreground">{a.category}</span>
+                        </span>
+                        <Button variant="ghost" size="sm" className="text-primary" onClick={() => setArchived(a, false)}>
+                          <ArchiveRestore /> {t("acct.restore")}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              )
+            })}
+          </ul>
+        </SheetContent>
+      </Sheet>
       {revaluing && <RevalueSheet account={revaluing} value={values[revaluing.id] ?? 0} onClose={() => setRevaluing(null)} onDone={() => (setRevaluing(null), setReload((n) => n + 1))} />}
     </AppShell>
   )
