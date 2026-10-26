@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Delete, Loader2, Plus } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Delete, Loader2, Plus, UserRound } from "lucide-react"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AccountIcon } from "@/components/account-icon"
@@ -9,7 +9,7 @@ import { toast } from "@/components/toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { deleteEntry, isFixedAsset, isMoney, listAccounts, listCategoryRules, perContact, postEntry, ruleFor, type Account, type CategoryRule, type PostEntryInput } from "@/lib/api"
+import { createContact, deleteEntry, isFixedAsset, isMoney, listAccounts, listCategoryRules, listContacts, perContact, postEntry, postLoan, ruleFor, type Account, type CategoryRule, type Contact, type LoanType, type PostEntryInput } from "@/lib/api"
 import { useT } from "@/lib/i18n"
 import { press, show, toSenDigits, type Key as PadKey } from "@/lib/keypad"
 import { cn, fmtIDR, todayISO } from "@/lib/utils"
@@ -38,6 +38,13 @@ const cache = {
   set: (list: Account[]) => { try { localStorage.setItem(cacheKey, JSON.stringify(list)) } catch { /* private mode */ } },
 }
 
+// Picking a person instead of a category records a loan. Which way follows the tab and what
+// is already owed: money out pays back what I owe first, otherwise it lends; money in is
+// their repayment while they owe me, otherwise I borrow.
+const loanType = (kind: Kind, c: Contact): LoanType =>
+  kind === "expense" ? (c.payable > 0 ? "lunas_keluar" : "talangan") : c.receivable > 0 ? "lunas_masuk" : "pinjam"
+const person = "c:" // tile ids of people carry this prefix
+
 const dayBefore = (iso: string) => new Date(Date.parse(iso) - 864e5).toISOString().slice(0, 10)
 
 function QuickAddForm({ onDone }: { onDone: () => void }) {
@@ -52,6 +59,8 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   const [tile, setTile] = useState("")
   const [tilePicked, setTilePicked] = useState(false) // a tap beats a rule's suggestion
   const [rules, setRules] = useState<CategoryRule[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [naming, setNaming] = useState<string | null>(null) // the "+ new person" box
   const [date, setDate] = useState(todayISO())
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
@@ -59,6 +68,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     listCategoryRules().then(setRules, () => {})
+    listContacts().then(setContacts, () => {})
     const use = (list: Account[]) => {
       setAccounts(list)
       const wallets = list.filter((a) => a.is_active && isMoney(a) && a.type === "Asset") // default: never a card
@@ -95,7 +105,13 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   const today = todayISO()
   const yesterday = dayBefore(today)
   const amount = toSenDigits(digits)
-  const tileAccount = tiles.find((a) => a.id === tile)
+  // Money back from a spending category is a refund: it lowers what that category spent.
+  const refunds = kind === "income"
+    ? active.filter((a) => a.type === "Expense" && a.has_entries).sort((a, b) => b.uses_30d - a.uses_30d || a.code.localeCompare(b.code))
+    : []
+  const tileAccount = tiles.find((a) => a.id === tile) ?? refunds.find((a) => a.id === tile)
+  const contact = contacts.find((c) => person + c.id === tile)
+  const loan = contact && kind !== "transfer" ? loanType(kind, contact) : null
   useEffect(() => setErr({}), [digits, tile, kind])
   const walletLabel = kind === "transfer" ? t("tx.from") : kind === "income" ? t("tx.receivedInto") : t("tx.paidFrom")
 
@@ -109,6 +125,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
   async function save() {
     // Save stays enabled and says what is missing, instead of a grey button with no reason.
     if (amount <= 0) return setErr({ message: t("qa.needAmount") })
+    if (contact && loan) return saveLoan(contact, loan)
     if (!tileAccount) return setErr({ message: t(kind === "transfer" ? "qa.needTo" : kind === "income" ? "qa.needSource" : "qa.needCategory") })
     setBusy(true)
     setErr({})
@@ -136,6 +153,57 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
       setBusy(false)
     }
   }
+
+  async function saveLoan(c: Contact, type: LoanType) {
+    setBusy(true)
+    setErr({})
+    try {
+      // A repayment above what is owed turns the rest into a loan the other way.
+      const e = await postLoan({ type, contact_id: c.id, account_id: wallet, amount, entry_date: date, description: note.trim(), confirm_overpay: true })
+      keepWallet(wallet)
+      onDone()
+      toast(t("qa.saved", { amount: fmtIDR(amount), account: c.name }), {
+        action: {
+          label: t("common.undo"),
+          run: () => deleteEntry(e.id).then(() => toast(t("qa.undone")), (x) => toast(toFormError(x).message ?? "", { tone: "error" })),
+        },
+      })
+    } catch (e) {
+      setErr(toFormError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addPerson(name: string) {
+    if (!name.trim()) return setNaming(null)
+    try {
+      const c = await createContact(name.trim())
+      setContacts((list) => [...list, { ...c, receivable: 0, payable: 0, net: 0, limit: null }])
+      setTile(person + c.id)
+      setNaming(null)
+    } catch (e) {
+      setErr(toFormError(e))
+    }
+  }
+
+  // What saving a person does, in words, with what is owed and the lending limit.
+  const loanHint = contact && loan && t(`qa.loan.${loan}`, {
+    name: contact.name,
+    amount: fmtIDR(loan === "lunas_keluar" ? contact.payable : contact.receivable),
+  }) + (loan === "talangan" && contact.limit && contact.receivable + amount > contact.limit
+    ? " " + t("qa.overLimit", { limit: fmtIDR(contact.limit) })
+    : "")
+
+  const tileButton = (id: string, label: string, icon: preact.ComponentChildren) => (
+    <button key={id} type="button" aria-pressed={id === tile} onClick={() => (setTile(id), setTilePicked(true))}
+      className={cn("grid min-h-20 justify-items-center content-start gap-1.5 rounded-sm border p-2 text-center text-xs leading-tight [@media(max-height:760px)]:min-h-16 [@media(max-height:760px)]:p-1.5",
+        id === tile ? "border-primary bg-[#eaf2ff] ring-1 ring-primary" : "hover:bg-muted")}>
+      {icon}
+      <span className="line-clamp-2 break-words">{label}</span>
+    </button>
+  )
+  const personIcon = <span className="grid size-9 place-items-center rounded-full bg-orange-100 text-orange-700"><UserRound className="size-4" /></span>
 
   const chip = (on: boolean) =>
     cn("h-11 shrink-0 rounded-full border px-4 text-sm md:h-9", on ? "border-primary bg-[#eaf2ff] font-medium text-primary" : "hover:bg-muted")
@@ -175,17 +243,42 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
           )
         ) : (
           <div className="grid grid-cols-4 gap-2">
-            {tiles.map((a) => (
-              <button key={a.id} type="button" aria-pressed={a.id === tile} onClick={() => (setTile(a.id), setTilePicked(true))}
-                className={cn("grid min-h-20 justify-items-center content-start gap-1.5 rounded-sm border p-2 text-center text-xs leading-tight [@media(max-height:760px)]:min-h-16 [@media(max-height:760px)]:p-1.5",
-                  a.id === tile ? "border-primary bg-[#eaf2ff] ring-1 ring-primary" : "hover:bg-muted")}>
-                <AccountIcon account={a} />
-                <span className="line-clamp-2 break-words">{a.name}</span>
-              </button>
-            ))}
+            {tiles.map((a) => tileButton(a.id, a.name, <AccountIcon account={a} />))}
           </div>
         )}
       </fieldset>
+
+      {accounts !== null && refunds.length > 0 && (
+        <fieldset>
+          <legend className="mb-2 text-sm text-muted-foreground">{t("qa.refund")}</legend>
+          <div className="grid grid-cols-4 gap-2">
+            {refunds.map((a) => tileButton(a.id, a.name, <AccountIcon account={a} />))}
+          </div>
+        </fieldset>
+      )}
+
+      {accounts !== null && kind !== "transfer" && (
+        <fieldset>
+          <legend className="mb-2 text-sm text-muted-foreground">{t("qa.people")}</legend>
+          <div className="grid grid-cols-4 gap-2">
+            {contacts.map((c) => tileButton(person + c.id, c.name, personIcon))}
+            {naming === null ? (
+              <button type="button" onClick={() => setNaming("")}
+                className="grid min-h-20 place-items-center gap-1 rounded-sm border border-dashed p-2 text-xs text-muted-foreground hover:bg-muted [@media(max-height:760px)]:min-h-16">
+                <Plus className="size-4" />{t("qa.newPerson")}
+              </button>
+            ) : (
+              <form className="col-span-4 flex gap-2" onSubmit={(e) => (e.preventDefault(), addPerson(naming))}>
+                <Input autoFocus value={naming} onInput={(e) => setNaming(e.currentTarget.value)} maxLength={100}
+                  aria-label={t("qa.personName")} placeholder={t("qa.personName")} className="h-11 flex-1 rounded-sm md:h-10" />
+                <Button type="submit" className="h-11 rounded-sm md:h-10">{t("common.add")}</Button>
+                <Button type="button" variant="ghost" className="h-11 md:h-10" onClick={() => setNaming(null)}>{t("common.cancel")}</Button>
+              </form>
+            )}
+          </div>
+          {loanHint && <p className="mt-2 text-sm text-muted-foreground">{loanHint}</p>}
+        </fieldset>
+      )}
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
         <button type="button" className={chip(date === today)} onClick={() => setDate(today)}>{t("qa.today")}</button>

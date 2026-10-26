@@ -4,7 +4,7 @@ import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Logo } from "@/components/site"
-import { resendVerification, useAuth, useInboxCount } from "@/lib/api"
+import { onPending, resendVerification, useAuth, useInboxCount } from "@/lib/api"
 import { Info, type TermKey } from "@/components/term"
 import { useT, type Key } from "@/lib/i18n"
 import { amountsHidden, cn, setAmountsHidden } from "@/lib/utils"
@@ -117,6 +117,29 @@ function NavLinks({ path, inbox }: { path: string; inbox: number }) {
 
 // AppShell is the console layout: a fixed sidebar on desktop; on phones a top bar whose
 // menu button opens the same links in a drawer from the left.
+// LoadingBar runs along the top while data is on its way, so a slow connection shows as
+// "loading" instead of numbers that change without warning. It waits 150ms, like the
+// skeletons, so a quick answer never flashes it.
+function LoadingBar() {
+  const t = useT()
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let timer = 0
+    const stop = onPending((n) => {
+      window.clearTimeout(timer)
+      if (n > 0) timer = window.setTimeout(() => setBusy(true), 150)
+      else setBusy(false)
+    })
+    return () => (stop(), window.clearTimeout(timer))
+  }, [])
+  return (
+    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] overflow-hidden print:hidden">
+      {busy && <span className="loading-bar block h-full w-1/3 rounded-r-full bg-primary" />}
+      <span className="sr-only">{busy ? t("common.loading") : ""}</span>
+    </div>
+  )
+}
+
 export function AppShell({ title, term, actions, back, children }: {
   title: string
   back?: { href: string; label: string } // a detail page's way back, shown above the title
@@ -133,6 +156,7 @@ export function AppShell({ title, term, actions, back, children }: {
 
   return (
     <div className="min-h-svh bg-[#f7f8fa] lg:grid lg:grid-cols-[15rem_1fr] print:block print:bg-white">
+      <LoadingBar />
       <aside className="sticky top-0 hidden h-svh border-r bg-background lg:block print:hidden">
         <div className="flex h-14 items-center px-5">
           <Logo />

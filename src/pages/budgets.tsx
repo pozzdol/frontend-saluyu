@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card as UICard, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Segmented } from "@/components/segmented"
-import { ApiError, createAccount, getBudgets, listAccounts, putBudget, updateAccount, type Account, type BudgetList, type BudgetRow, type NeedGroup } from "@/lib/api"
+import { ApiError, createAccount, getBudgets, listAccounts, listContacts, putBudget, renameContact, updateAccount, type Account, type BudgetList, type BudgetRow, type Contact, type NeedGroup } from "@/lib/api"
 import { t, useT } from "@/lib/i18n"
 import { cn, fmtIDR, toSen } from "@/lib/utils"
 import { Goals } from "@/pages/goals"
@@ -238,6 +238,80 @@ function AddBudget({ rows, date, accounts, initial, onAdded, onCancel }: {
   )
 }
 
+// Lending: what each person still owes against the limit set for them. Unlike a category
+// budget it does not restart each period: it goes down only when they pay back.
+function Lending() {
+  const t = useT()
+  const [people, setPeople] = useState<Contact[] | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [err, setErr] = useState<FormError>({})
+  useEffect(() => void listContacts().then(setPeople, (e) => setErr(toFormError(e))), [])
+  if (!people || people.length === 0) return null
+
+  async function save(c: Contact, raw: string) {
+    const limit = raw.trim() ? toSen(raw) : 0
+    if (!(limit >= 0)) return setErr({ message: t("field.positiveAmount") })
+    try {
+      const updated = await renameContact(c.id, c.name, limit)
+      setPeople((list) => list?.map((x) => (x.id === c.id ? { ...x, limit: updated.limit } : x)) ?? null)
+      setEditing(null)
+      setErr({})
+    } catch (e) {
+      setErr(toFormError(e))
+    }
+  }
+
+  return (
+    <section className="grid gap-2" aria-labelledby="lending">
+      <h2 id="lending" className="font-semibold">{t("budget.lending")}</h2>
+      <p className="text-sm text-muted-foreground">{t("budget.lendingHint")}</p>
+      <Status err={err} ok="" />
+      <ul className="divide-y rounded-sm border bg-card">
+        {people.map((c) => {
+          const out = c.receivable
+          const pct = c.limit ? Math.min(100, (out / c.limit) * 100) : 0
+          const over = !!c.limit && out > c.limit
+          return (
+            <li key={c.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto] md:items-center">
+              <div className="grid gap-1">
+                <span className="flex flex-wrap items-baseline gap-x-2">
+                  <a href={`/app/contacts/${c.id}`} className="font-medium text-primary hover:underline">{c.name}</a>
+                  <span className="tabular-nums">
+                    {c.limit ? t("budget.owedOfLimit", { amount: fmtIDR(out), limit: fmtIDR(c.limit) }) : t("budget.owed", { amount: fmtIDR(out) })}
+                  </span>
+                  {c.payable > 0 && <span className="text-xs text-rose-700">{t("budget.youOwe", { amount: fmtIDR(c.payable) })}</span>}
+                </span>
+                {c.limit && (
+                  <span role="meter" aria-label={t("budget.lendingUsed", { name: c.name })} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}
+                    className="block h-1.5 overflow-hidden rounded-sm bg-[#e6ebf5]">
+                    <span className={cn("block h-full", over ? "bg-rose-600" : pct >= 80 ? "bg-amber-500" : "bg-orange-500")} style={{ width: `${pct}%` }} />
+                  </span>
+                )}
+              </div>
+              {editing === c.id ? (
+                <form noValidate className="flex items-center gap-2" onSubmit={(e) => {
+                  e.preventDefault()
+                  save(c, ((e.currentTarget as HTMLFormElement).elements.namedItem("limit") as HTMLInputElement).value)
+                }}>
+                  <Input name="limit" autoFocus inputMode="decimal" placeholder={t("budget.noLimit")}
+                    defaultValue={c.limit ? (c.limit / 100).toLocaleString("id-ID") : ""}
+                    aria-label={t("budget.limitOf", { name: c.name })} className="h-9 w-36 rounded-sm text-right tabular-nums" />
+                  <Button type="submit" size="sm" className="rounded-sm">{t("common.save")}</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
+                </form>
+              ) : (
+                <Button variant="outline" size="sm" className="justify-self-start rounded-sm md:justify-self-end" onClick={() => setEditing(c.id)}>
+                  {c.limit ? t("budget.changeLimit") : <><Plus /> {t("budget.setLimit")}</>}
+                </Button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 export function BudgetsPage() {
   const t = useT()
   const [date, setDate] = usePeriodDate()
@@ -329,6 +403,8 @@ export function BudgetsPage() {
         )}
 
         {list && <Split list={list} />}
+
+        {list && <Lending />}
 
         {unplanned.length > 0 && (
           <section className="grid gap-2 rounded-sm border border-dashed p-4">

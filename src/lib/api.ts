@@ -101,7 +101,31 @@ export function refresh(): Promise<boolean> {
 }
 
 // authed retries once after a refresh when the short-lived access token has expired.
+// Requests the user is waiting on, for the loading bar (AppShell). The inbox poll runs in the
+// background every 30s, so it does not count.
+let pending = 0
+const pendingWatchers = new Set<(n: number) => void>()
+export function onPending(fn: (n: number) => void) {
+  pendingWatchers.add(fn)
+  fn(pending)
+  return () => void pendingWatchers.delete(fn)
+}
+const setPending = (d: number) => {
+  pending += d
+  pendingWatchers.forEach((fn) => fn(pending))
+}
+
 async function authed<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (path === "/inbox") return authedOnce<T>(path, init)
+  setPending(1)
+  try {
+    return await authedOnce<T>(path, init)
+  } finally {
+    setPending(-1)
+  }
+}
+
+async function authedOnce<T>(path: string, init: RequestInit): Promise<T> {
   try {
     return await request<T>(path, init)
   } catch (e) {
@@ -495,6 +519,7 @@ export type Contact = {
   receivable: number // they owe me
   payable: number // I owe them
   net: number // receivable - payable; positive = they owe me
+  limit: number | null // lending limit ("plafon"); null = none
 }
 
 export type ContactLine = {
@@ -527,8 +552,9 @@ export type LoanInput = {
 
 export const listContacts = () => authed<{ data: Contact[] }>("/contacts").then((r) => r.data)
 export const createContact = (name: string) => authed<{ data: Contact }>("/contacts", json("POST", { name })).then((r) => r.data)
-export const renameContact = (id: string, name: string) =>
-  authed<{ data: Contact }>(`/contacts/${id}`, json("PATCH", { name })).then((r) => r.data)
+// limit: undefined keeps it, 0 removes it.
+export const renameContact = (id: string, name: string, limit?: number) =>
+  authed<{ data: Contact }>(`/contacts/${id}`, json("PATCH", { name, limit })).then((r) => r.data)
 export const deleteContact = (id: string) => authed<void>(`/contacts/${id}`, { method: "DELETE" })
 export const getContact = (id: string) => authed<{ data: ContactDetail }>(`/contacts/${id}`).then((r) => r.data)
 export const postLoan = (body: LoanInput) => authed<{ data: Entry }>("/loans", json("POST", body)).then((r) => r.data)
