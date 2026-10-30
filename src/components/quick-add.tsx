@@ -1,4 +1,5 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Delete, Loader2, Plus, UserRound } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Delete, Loader2, Plus, Sparkles, UserRound } from "lucide-react"
+import { Assistant } from "@/components/assistant"
 import { useLocation } from "preact-iso"
 import { useEffect, useState } from "preact/hooks"
 import { AccountIcon } from "@/components/account-icon"
@@ -47,7 +48,7 @@ const person = "c:" // tile ids of people carry this prefix
 
 const dayBefore = (iso: string) => new Date(Date.parse(iso) - 864e5).toISOString().slice(0, 10)
 
-function QuickAddForm({ onDone }: { onDone: () => void }) {
+function QuickAddForm({ onDone, onAI }: { onDone: () => void; onAI: () => void }) {
   const t = useT()
   // Opened from a card's page, the card is what you are paying with.
   const { path } = useLocation()
@@ -210,6 +211,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="grid gap-3">
+      <Button variant="outline" className="h-11 rounded-sm md:h-10" onClick={onAI}><Sparkles />{t("qa.ai.open")}</Button>
       <Segmented
         label={t("tx.type")}
         value={kind}
@@ -325,6 +327,7 @@ export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {
   const t = useT()
   const mobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [ai, setAI] = useState(false)
   const waiting = useOutboxCount()
   return (
     <>
@@ -349,7 +352,9 @@ export function QuickAdd({ variant }: { variant: "fab" | "sidebar" }) {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side={mobile ? "bottom" : "right"} title={t("qa.title")} className={cn(mobile && "max-h-[94svh]")}>
           {/* Mounted only while open: every opening starts clean with fresh usage counts. */}
-          {open && <QuickAddForm onDone={() => setOpen(false)} />}
+          {open && (ai
+            ? <Assistant onDone={() => setOpen(false)} onManual={() => setAI(false)} />
+            : <QuickAddForm onDone={() => setOpen(false)} onAI={() => setAI(true)} />)}
         </SheetContent>
       </Sheet>
     </>

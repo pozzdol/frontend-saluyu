@@ -6,7 +6,7 @@ import { AppShell, MobileItem, MobileList, TableCard } from "@/components/app-sh
 import { Field, SelectField, Status, toFormError, useForm, type FormError } from "@/components/field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ApiError, createAccount, getTrialBalance, isFixedAsset, listAccounts, revalueAsset, updateAccount, type Account, type AccountType } from "@/lib/api"
+import { ApiError, createAccount, defaultGroup, nextCode, getTrialBalance, isFixedAsset, listAccounts, revalueAsset, updateAccount, type Account, type AccountType } from "@/lib/api"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/components/picker"
 import { AmountField, DateField } from "@/components/field"
@@ -24,18 +24,6 @@ export const typeDot: Record<AccountType, string> = {
   Equity: "bg-violet-500",
   Revenue: "bg-emerald-500",
   Expense: "bg-rose-500",
-}
-
-// Codes start with the type's digit (1 Asset … 5 Expense); a new account gets the next free one.
-const typeDigit: Record<AccountType, string> = { Asset: "1", Liability: "2", Equity: "3", Revenue: "4", Expense: "5" }
-const defaultGroup: Record<AccountType, string> = { Asset: "Kas & Bank", Liability: "Utang", Equity: "Ekuitas", Revenue: "Pendapatan", Expense: "Beban" }
-
-export function nextCode(accounts: Account[], type: AccountType) {
-  const used = new Set(accounts.map((a) => a.code))
-  const same = accounts.filter((a) => a.code.startsWith(typeDigit[type])).map((a) => Number(a.code)).filter(Number.isFinite)
-  let n = same.length ? Math.max(...same) + 1 : Number(typeDigit[type] + "001")
-  while (used.has(String(n))) n++
-  return String(n)
 }
 
 function NewAccount({ accounts, onCreated, onCancel }: { accounts: Account[]; onCreated: () => void; onCancel: () => void }) {

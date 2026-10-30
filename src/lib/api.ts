@@ -245,6 +245,18 @@ export const isMoney = (a: Account) => (a.type === "Asset" || isCard(a)) && !per
 // isFixedAsset: vehicles, property, gadgets. Owned, but never spendable money.
 export const isFixedAsset = (a: Account) => a.type === "Asset" && a.category === "Aset Tetap"
 
+// Codes start with the type's digit (1 Asset … 5 Expense); a new account gets the next free one.
+const typeDigit: Record<AccountType, string> = { Asset: "1", Liability: "2", Equity: "3", Revenue: "4", Expense: "5" }
+export const defaultGroup: Record<AccountType, string> = { Asset: "Kas & Bank", Liability: "Utang", Equity: "Ekuitas", Revenue: "Pendapatan", Expense: "Beban" }
+
+export function nextCode(accounts: Account[], type: AccountType) {
+  const used = new Set(accounts.map((a) => a.code))
+  const same = accounts.filter((a) => a.code.startsWith(typeDigit[type])).map((a) => Number(a.code)).filter(Number.isFinite)
+  let n = same.length ? Math.max(...same) + 1 : Number(typeDigit[type] + "001")
+  while (used.has(String(n))) n++
+  return String(n)
+}
+
 export type EntryKind = "income" | "expense" | "transfer" | "loan" | "repayment" | "opening" | "cash_count" | "adjustment" | "borrowing" | "installment"
 
 export type Line = {
@@ -558,6 +570,30 @@ export const renameContact = (id: string, name: string, limit?: number) =>
 export const deleteContact = (id: string) => authed<void>(`/contacts/${id}`, { method: "DELETE" })
 export const getContact = (id: string) => authed<{ data: ContactDetail }>(`/contacts/${id}`).then((r) => r.data)
 export const postLoan = (body: LoanInput) => authed<{ data: Entry }>("/loans", json("POST", body)).then((r) => r.data)
+
+// The AI assistant drafts entries and loans from plain text; it never saves. Account and contact
+// fields hold an id, "new:<name>" (create on save) or "" (not chosen). Amounts are rupiah.
+export type DraftItem = {
+  target: "entry" | "loan"
+  kind: string
+  loan_type: string
+  amount: number
+  entry_date: string
+  description: string
+  from: string
+  to: string
+  next_period: boolean
+  account: string
+  contact: string
+  my_share: number
+  expense_account: string
+  confirm_overpay: boolean
+}
+export type AssistantReply = { reply: string; save: boolean; items: DraftItem[]; new_accounts: { name: string; type: AccountType; icon: string }[] }
+export type ChatMessage = { role: "user" | "model"; text: string }
+
+export const assistantDraft = (today: string, messages: ChatMessage[]) =>
+  authed<{ data: AssistantReply }>("/assistant/draft", json("POST", { today, messages })).then((r) => r.data)
 
 // ---- Sharing groups (phase 5) ----
 
